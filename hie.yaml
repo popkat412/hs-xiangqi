@@ -1,0 +1,13 @@
+cradle:
+  stack:
+    - path: "./src"
+      component: "xiangqi:lib"
+
+    - path: "./app/Main.hs"
+      component: "xiangqi:exe:xiangqi"
+
+    - path: "./test"
+      component: "xiangqi:test:xiangqi-test"
+
+    - path: "./benchmark/Main.hs"
+      component: "xiangqi:bench:xiangqi-benchmark"
