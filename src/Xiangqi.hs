@@ -15,7 +15,13 @@ import GHC.List (foldl')
 import SquareSet
 
 -- {{{ Move generation
+
 -- TODO: Memoize
+
+-- | Generate pawn moves.
+--
+-- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
+-- but for now this just does the comuptation naively.
 pawnMoves :: Side -> Square -> SquareSet
 pawnMoves side sq =
   let dir = if side == Red then North else South
@@ -32,6 +38,10 @@ pawnMoves side sq =
 
 {- ORMOLU_DISABLE -}
 -- TODO: Memoize
+-- | Generate knight moves.
+--
+-- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
+-- but for now this just does the comuptation naively.
 knightMoves :: PieceContext -> Square -> SquareSet
 knightMoves =
   blockablePieceMoves
@@ -47,6 +57,11 @@ knightMoves =
 {- ORMOLU_ENABLE -}
 
 -- TODO: Memoize
+
+-- | Generate elephant moves.
+--
+-- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
+-- but for now this just does the comuptation naively.
 elephantMoves :: PieceContext -> Square -> SquareSet
 elephantMoves =
   blockablePieceMoves
@@ -56,21 +71,30 @@ elephantMoves =
       (NorthWest, ElephantNW)
     ]
 
+-- | Generate king moves.
+--
+-- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
+-- but for now this just does the comuptation naively.
 kingMoves :: Side -> Square -> SquareSet
 kingMoves = palacePieceMoves [North, East, South, West]
 
+-- | Generate advisor moves.
+--
+-- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
+-- but for now this just does the comuptation naively.
 advisorMoves :: Side -> Square -> SquareSet
 advisorMoves = palacePieceMoves [NorthEast, SouthEast, SouthWest, NorthWest]
 
 -- {{{ Helpers
 
 -- | Contains info about which squares are reachable and are blocked by what other square.
--- | The 1st tuple item is the blocked square. If the
--- | and the 2nd tuple item is the target square
+-- The 1st tuple item is the blocked square and the 2nd tuple item is the target square.
 type BlockablePieceInfo a = [(CompassDir, a)]
 
 {-# INLINE blockablePieceMoves #-}
-blockablePieceMoves :: (BoardDir a) => BlockablePieceInfo a -> PieceContext -> Square -> SquareSet
+
+-- | Helper function to generate moves for a blockable piece, aka Knight and Elephant
+blockablePieceMoves :: (BoardOffset a) => BlockablePieceInfo a -> PieceContext -> Square -> SquareSet
 blockablePieceMoves info context sq = foldl' fn empty info
   where
     fn acc (block, targetDir) =
@@ -81,7 +105,9 @@ blockablePieceMoves info context sq = foldl' fn empty info
           Nothing -> acc
 
 {-# INLINE palacePieceMoves #-}
-palacePieceMoves :: (BoardDir a) => [a] -> Side -> Square -> SquareSet
+
+-- | Helper function to generate moves for a piece inside the palace, aka King and Advisor
+palacePieceMoves :: (BoardOffset a) => [a] -> Side -> Square -> SquareSet
 palacePieceMoves info side sq = foldl' fn empty info .&. palaceMask side
   where
     fn acc dir = case sq `shiftSquare` dir of
