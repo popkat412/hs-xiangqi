@@ -77,7 +77,7 @@ import qualified Data.Bits as Bits
 import Data.DoubleWord (Word96 (..))
 import Data.List (foldl', intersperse)
 import Data.Word (Word8)
-import Helpers (safeToEnum, showBits, splitEvery)
+import Helpers (padRight, safeToEnum, showBits, splitEvery)
 import Test.QuickCheck.Arbitrary
 
 type Bit = Bool
@@ -364,8 +364,8 @@ instance Show SquareSet where
 prettySquareSet :: SquareSet -> String
 prettySquareSet =
   unlines -- wow such point free
-    . (++ ["", '\t' : intersperse ' ' ['A' .. 'I']])
-    . zipWith (++) (map (\a -> show a ++ "\t") [10, 9 .. 1 :: Int])
+    . (++ ["", replicate 5 ' ' ++ intersperse ' ' ['A' .. 'I']])
+    . zipWith (++) (map (padRight 5 ' ' . show) [10, 9 .. 1 :: Int])
     . map (intersperse ' ' . reverse)
     . splitEvery 9
     . drop 6

@@ -2,6 +2,7 @@ module Helpers
   ( showBits,
     splitEvery,
     safeToEnum,
+    padRight,
   )
 where
 
@@ -32,3 +33,6 @@ safeToEnum = enumIfBetween minBound maxBound
       let a' = fromEnum a
           z' = fromEnum z
        in if a' <= x && x <= z' then Just $ toEnum x else Nothing
+
+padRight :: Int -> a -> [a] -> [a]
+padRight num x xs = take num $ xs ++ repeat x
