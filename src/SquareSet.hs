@@ -72,7 +72,7 @@ module SquareSet
   )
 where
 
-import Data.Bits (Bits, FiniteBits, shiftL, shiftR, (.&.), (.|.))
+import Data.Bits (Bits (testBit), FiniteBits, shift, shiftL, (.&.), (.|.))
 import qualified Data.Bits as Bits
 import Data.DoubleWord (Word96 (..))
 import Data.List (foldl', intersperse)
@@ -232,8 +232,7 @@ instance BoardOffset ElephantDir where
 shiftSS :: (BoardOffset a) => a -> SquareSet -> SquareSet
 shiftSS dir =
   let off = offset dir
-      shiftFn = if off > 0 then shiftL else shiftR
-   in (`shiftFn` abs off)
+   in (`shift` abs off)
 
 -- | Shift a square by a offset.
 -- If the new square is out of bounds, it returns Nothing.
@@ -588,27 +587,13 @@ xor = Bits.xor
 
 -- }}}
 
--- {{{ Helpers
-
-{-# INLINE squareSetToBit #-}
-squareSetToBit :: SquareSet -> Bit
-squareSetToBit = (/= empty)
-
-{-# INLINE squareToSquareSet #-}
-
--- | Returns a 'SquareSet' with the bit at 'Square' set.
-squareToSquareSet :: Square -> SquareSet
-squareToSquareSet sq = one `shiftL` fromEnum sq
-
--- }}}
-
 -- {{{ Get bit / Set bit
 
 {-# INLINE getBit #-}
 
 -- | True is the bit at the square is set, else False.
 getBit :: Square -> SquareSet -> Bit
-getBit sq ss = squareSetToBit $ ss .&. squareToSquareSet sq
+getBit sq ss = testBit ss (fromEnum sq)
 
 {-# INLINE setBit #-}
 
