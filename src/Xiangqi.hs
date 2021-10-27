@@ -1,16 +1,17 @@
 {-# LANGUAGE DerivingStrategies #-}
 
 module Xiangqi
-  ( pawnMoves,
+  ( -- * Move generators
+    pawnMoves,
     knightMoves,
     elephantMoves,
     kingMoves,
     advisorMoves,
+    rookMoves,
   )
 where
 
-import Data.Bits ((.&.), (.|.))
-import Data.Function ((&))
+import Data.Bits (Bits ((.|.)), (.&.))
 import GHC.List (foldl')
 import SquareSet
 
@@ -85,13 +86,14 @@ kingMoves = palacePieceMoves [North, East, South, West]
 advisorMoves :: Side -> Square -> SquareSet
 advisorMoves = palacePieceMoves [NorthEast, SouthEast, SouthWest, NorthWest]
 
+rookMoves :: Square -> SquareSet -> SquareSet
+rookMoves = slidingPieceAttacks [North, East, South, West]
+
 -- {{{ Helpers
 
 -- | Contains info about which squares are reachable and are blocked by what other square.
 -- The 1st tuple item is the blocked square and the 2nd tuple item is the target square.
 type BlockablePieceInfo a = [(CompassDir, a)]
-
-{-# INLINE blockablePieceMoves #-}
 
 -- | Helper function to generate moves for a blockable piece, aka Knight and Elephant
 blockablePieceMoves :: (BoardOffset a) => BlockablePieceInfo a -> PieceContext -> Square -> SquareSet
@@ -100,19 +102,31 @@ blockablePieceMoves info context sq = foldl' fn empty info
     fn acc (block, targetDir) =
       if getBitAtDir block context
         then acc
-        else case sq `shiftSquare` targetDir of
-          Just x -> acc .|. (empty & setBit x)
-          Nothing -> acc
-
-{-# INLINE palacePieceMoves #-}
+        else maybe acc (`setBit` acc) (sq `shiftSquare` targetDir)
 
 -- | Helper function to generate moves for a piece inside the palace, aka King and Advisor
 palacePieceMoves :: (BoardOffset a) => [a] -> Side -> Square -> SquareSet
 palacePieceMoves info side sq = foldl' fn empty info .&. palaceMask side
   where
-    fn acc dir = case sq `shiftSquare` dir of
-      Just x -> acc .|. (empty & setBit x)
-      Nothing -> acc
+    fn acc dir = maybe acc (`setBit` acc) (sq `shiftSquare` dir)
+
+-- TODO: Memoize
+rayAttacks :: CompassDir -> Square -> SquareSet
+rayAttacks dir = go empty
+  where
+    go ss sq' = maybe ss (\x -> go (setBit x ss) x) (sq' `shiftSquare` dir)
+
+slidingPieceAttacks :: [CompassDir] -> Square -> SquareSet -> SquareSet
+slidingPieceAttacks dirs sq occupied = foldl' (\acc x -> acc .|. rayAttacksWithBlockers x) empty dirs
+  where
+    rayAttacksWithBlockers dir =
+      let attacks = rayAttacks dir sq
+          blockers = attacks .&. occupied
+
+          bitScan = if fromEnum dir < 0 then bitScanReverse else bitScanForward
+
+          sq' = bitScan blockers
+       in if squareSetToBool blockers then attacks `xor` rayAttacks dir sq' else attacks
 
 -- }}}
 

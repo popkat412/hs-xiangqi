@@ -50,6 +50,11 @@ module SquareSet
     setBits,
     clearBit,
     toggleBit,
+    bitScanForward,
+    bitScanReverse,
+
+    -- ** Helpers
+    squareSetToBool,
 
     -- * Board offsets
     BoardOffset (..),
@@ -72,7 +77,7 @@ module SquareSet
   )
 where
 
-import Data.Bits (Bits (testBit), FiniteBits, shift, shiftL, (.&.), (.|.))
+import Data.Bits (Bits (testBit), FiniteBits, countLeadingZeros, countTrailingZeros, shift, shiftL, (.&.), (.|.))
 import qualified Data.Bits as Bits
 import Data.DoubleWord (Word96 (..))
 import Data.List (foldl', intersperse)
@@ -587,7 +592,7 @@ xor = Bits.xor
 
 -- }}}
 
--- {{{ Get bit / Set bit
+-- {{{ Bit manipulation
 
 {-# INLINE getBit #-}
 
@@ -618,6 +623,18 @@ clearBit sq = (.&. (complement $ one `shiftL` fromEnum sq))
 -- | Toggle the bit at the square on / off.
 toggleBit :: Square -> SquareSet -> SquareSet
 toggleBit sq ss = if getBit sq ss then setBit sq ss else clearBit sq ss
+
+bitScanForward :: SquareSet -> Square
+bitScanForward = toEnum . countTrailingZeros
+
+bitScanReverse :: SquareSet -> Square
+bitScanReverse = toEnum . countLeadingZeros
+
+-- }}}
+
+-- {{{ Helpers
+squareSetToBool :: SquareSet -> Bool
+squareSetToBool = (/= empty)
 
 -- }}}
 
