@@ -19,11 +19,10 @@ import SquareSet
 
 -- TODO: Memoize
 
--- | Generate pawn moves.
---
--- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
--- but for now this just does the comuptation naively.
-pawnMoves :: Side -> Square -> SquareSet
+pawnMoves ::
+  Side ->
+  Square ->
+  SquareSet
 pawnMoves side sq =
   let dir = if side == Red then North else South
       rank = getRank sq
@@ -39,10 +38,6 @@ pawnMoves side sq =
 
 {- ORMOLU_DISABLE -}
 -- TODO: Memoize
--- | Generate knight moves.
---
--- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
--- but for now this just does the comuptation naively.
 knightMoves :: PieceContext -> Square -> SquareSet
 knightMoves =
   blockablePieceMoves
@@ -59,10 +54,6 @@ knightMoves =
 
 -- TODO: Memoize
 
--- | Generate elephant moves.
---
--- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
--- but for now this just does the comuptation naively.
 elephantMoves :: PieceContext -> Square -> SquareSet
 elephantMoves =
   blockablePieceMoves
@@ -72,21 +63,18 @@ elephantMoves =
       (NorthWest, ElephantNW)
     ]
 
--- | Generate king moves.
---
--- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
--- but for now this just does the comuptation naively.
 kingMoves :: Side -> Square -> SquareSet
 kingMoves = palacePieceMoves [North, East, South, West]
 
--- | Generate advisor moves.
---
--- /Note:/ This should memoize the results and I will try to achieve near O(1) lookup ish speeds,
--- but for now this just does the comuptation naively.
 advisorMoves :: Side -> Square -> SquareSet
 advisorMoves = palacePieceMoves [NorthEast, SouthEast, SouthWest, NorthWest]
 
-rookMoves :: Square -> SquareSet -> SquareSet
+rookMoves ::
+  -- | Square the rook is on
+  Square ->
+  -- | Blockers
+  SquareSet ->
+  SquareSet
 rookMoves = slidingPieceAttacks [North, East, South, West]
 
 -- {{{ Helpers
