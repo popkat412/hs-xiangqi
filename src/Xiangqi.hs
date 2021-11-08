@@ -75,16 +75,28 @@ advisorMoves = palacePieceMoves [NorthEast, SouthEast, SouthWest, NorthWest]
 rookMoves ::
   -- | Square the rook is on
   Square ->
-  -- | Blockers
+  -- | Occupied squares
   SquareSet ->
   -- | Rook moves
   SquareSet
-rookMoves = slidingPieceAttacks [North, East, South, West]
+rookMoves sq occupied = foldl' (\acc x -> acc `union` rayAttacksWithBlockers x) empty [North, East, South, West]
+  where
+    rayAttacksWithBlockers dir =
+      let attacks = rayAttacks dir sq
+          blockers = attacks `intersection` occupied
+
+          bitScan = if offset dir < 0 then bitScanReverse else bitScanForward
+
+          sq' = bitScan blockers
+       in maybe
+            attacks
+            (\x -> attacks `xor` rayAttacks dir x)
+            sq'
 
 cannonMoves ::
   -- | Square the cannon is on
   Square ->
-  -- | Occupied
+  -- | Occupied squares
   SquareSet ->
   -- | Cannon moves
   SquareSet
@@ -139,22 +151,6 @@ rayAttacks :: CompassDir -> Square -> SquareSet
 rayAttacks dir = go empty
   where
     go ss sq' = maybe ss (\x -> go (setBit x ss) x) (sq' `shiftSquare` dir)
-
--- TODO: Get rid of this and put this into rookMoves
-slidingPieceAttacks :: [CompassDir] -> Square -> SquareSet -> SquareSet
-slidingPieceAttacks dirs sq occupied = foldl' (\acc x -> acc `union` rayAttacksWithBlockers x) empty dirs
-  where
-    rayAttacksWithBlockers dir =
-      let attacks = rayAttacks dir sq
-          blockers = attacks `intersection` occupied
-
-          bitScan = if offset dir < 0 then bitScanReverse else bitScanForward
-
-          sq' = bitScan blockers
-       in maybe
-            attacks
-            (\x -> attacks `xor` rayAttacks dir x)
-            sq'
 
 -- }}}
 
