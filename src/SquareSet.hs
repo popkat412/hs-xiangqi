@@ -52,9 +52,12 @@ module SquareSet
     toggleBit,
     bitScanForward,
     bitScanReverse,
+    clearLS1B,
+    clearMS1B,
 
     -- ** Helpers
     squareSetToBool,
+    traceSS,
 
     -- * Board offsets
     BoardOffset (..),
@@ -77,11 +80,12 @@ module SquareSet
   )
 where
 
-import Data.Bits (Bits (testBit), FiniteBits, countLeadingZeros, countTrailingZeros, shift, shiftL, (.&.), (.|.))
+import Data.Bits (Bits (testBit), FiniteBits, countLeadingZeros, countTrailingZeros, finiteBitSize, shift, shiftL, (.&.), (.|.))
 import qualified Data.Bits as Bits
 import Data.DoubleWord (Word96 (..))
 import Data.List (foldl', intersperse)
 import Data.Word (Word8)
+import Debug.Trace (trace)
 import Helpers (padRight, safeToEnum, showBits, splitEvery)
 import Test.QuickCheck.Arbitrary
 
@@ -624,11 +628,28 @@ clearBit sq = (.&. (complement $ one `shiftL` fromEnum sq))
 toggleBit :: Square -> SquareSet -> SquareSet
 toggleBit sq ss = if getBit sq ss then setBit sq ss else clearBit sq ss
 
-bitScanForward :: SquareSet -> Square
-bitScanForward = toEnum . countTrailingZeros
+bitScanForward :: SquareSet -> Maybe Square
+bitScanForward = safeToEnum . countTrailingZeros
 
-bitScanReverse :: SquareSet -> Square
-bitScanReverse = toEnum . countLeadingZeros
+bitScanReverse :: SquareSet -> Maybe Square
+bitScanReverse ss = safeToEnum $ finiteBitSize ss - countLeadingZeros ss - 1
+
+clearLSorBS1B ::
+  -- | bitScan function
+  (SquareSet -> Maybe Square) ->
+  -- | SquareSet to clear
+  SquareSet ->
+  -- | New square set
+  Maybe SquareSet
+clearLSorBS1B bitScan ss = do
+  x <- bitScan ss
+  return $ clearBit x ss
+
+clearLS1B :: SquareSet -> Maybe SquareSet
+clearLS1B = clearLSorBS1B bitScanForward
+
+clearMS1B :: SquareSet -> Maybe SquareSet
+clearMS1B = clearLSorBS1B bitScanReverse
 
 -- }}}
 
@@ -637,5 +658,8 @@ squareSetToBool :: SquareSet -> Bool
 squareSetToBool = (/= empty)
 
 -- }}}
+
+traceSS :: SquareSet -> a -> a
+traceSS = trace . prettySquareSet
 
 -- }}}

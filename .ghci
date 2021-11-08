@@ -1,1 +1,3 @@
 :set prompt "ghci> "
+:set -fbreak-on-exception
+:set stop :list

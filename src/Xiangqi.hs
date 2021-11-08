@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DerivingStrategies #-}
 
 module Xiangqi
@@ -8,10 +9,12 @@ module Xiangqi
     kingMoves,
     advisorMoves,
     rookMoves,
+    cannonMoves,
   )
 where
 
-import Data.Bits (Bits ((.|.)), (.&.))
+import Data.Function ((&))
+import Data.Maybe (fromMaybe)
 import GHC.List (foldl')
 import SquareSet
 
@@ -74,17 +77,50 @@ rookMoves ::
   Square ->
   -- | Blockers
   SquareSet ->
+  -- | Rook moves
   SquareSet
 rookMoves = slidingPieceAttacks [North, East, South, West]
 
+cannonMoves ::
+  -- | Square the cannon is on
+  Square ->
+  -- | Occupied
+  SquareSet ->
+  -- | Cannon moves
+  SquareSet
+cannonMoves sq occupied = foldl' (\acc x -> acc `union` cannonMoves' x) empty [North, East, South, West]
+  where
+    cannonMoves' dir = fromMaybe empty $ do
+      -- Sliding attacks
+      let attacks = rayAttacks dir sq
+          blockers = attacks `intersection` occupied
+          bitScan = if offset dir < 0 then bitScanReverse else bitScanForward
+          blockedSq = bitScan blockers
+          slidingAttacks = maybe attacks (\x -> attacks `xor` rayAttacks dir x) blockedSq
+
+      -- Jump attacks
+      let jumpAttacks' =
+            let clearFn = if offset dir < 0 then clearMS1B else clearLS1B
+             in do
+                  jumpAttackSquare <- clearFn blockers
+                  bitScan jumpAttackSquare
+
+      let jumpAttacks = maybe empty (\x -> empty & setBit x) jumpAttacks'
+
+      -- Combine both
+      return $ slidingAttacks `union` jumpAttacks
+
 -- {{{ Helpers
 
--- | Contains info about which squares are reachable and are blocked by what other square.
--- The 1st tuple item is the blocked square and the 2nd tuple item is the target square.
-type BlockablePieceInfo a = [(CompassDir, a)]
-
 -- | Helper function to generate moves for a blockable piece, aka Knight and Elephant
-blockablePieceMoves :: (BoardOffset a) => BlockablePieceInfo a -> PieceContext -> Square -> SquareSet
+blockablePieceMoves ::
+  (BoardOffset a) =>
+  -- | Contains info about which squares are reachable and are blocked by what other square.
+  -- The 1st tuple item is the blocked square and the 2nd tuple item is the target square.
+  [(CompassDir, a)] ->
+  PieceContext ->
+  Square ->
+  SquareSet
 blockablePieceMoves info context sq = foldl' fn empty info
   where
     fn acc (block, targetDir) =
@@ -94,7 +130,7 @@ blockablePieceMoves info context sq = foldl' fn empty info
 
 -- | Helper function to generate moves for a piece inside the palace, aka King and Advisor
 palacePieceMoves :: (BoardOffset a) => [a] -> Side -> Square -> SquareSet
-palacePieceMoves info side sq = foldl' fn empty info .&. palaceMask side
+palacePieceMoves info side sq = foldl' fn empty info `intersection` palaceMask side
   where
     fn acc dir = maybe acc (`setBit` acc) (sq `shiftSquare` dir)
 
@@ -104,17 +140,21 @@ rayAttacks dir = go empty
   where
     go ss sq' = maybe ss (\x -> go (setBit x ss) x) (sq' `shiftSquare` dir)
 
+-- TODO: Get rid of this and put this into rookMoves
 slidingPieceAttacks :: [CompassDir] -> Square -> SquareSet -> SquareSet
-slidingPieceAttacks dirs sq occupied = foldl' (\acc x -> acc .|. rayAttacksWithBlockers x) empty dirs
+slidingPieceAttacks dirs sq occupied = foldl' (\acc x -> acc `union` rayAttacksWithBlockers x) empty dirs
   where
     rayAttacksWithBlockers dir =
       let attacks = rayAttacks dir sq
-          blockers = attacks .&. occupied
+          blockers = attacks `intersection` occupied
 
-          bitScan = if fromEnum dir < 0 then bitScanReverse else bitScanForward
+          bitScan = if offset dir < 0 then bitScanReverse else bitScanForward
 
           sq' = bitScan blockers
-       in if squareSetToBool blockers then attacks `xor` rayAttacks dir sq' else attacks
+       in maybe
+            attacks
+            (\x -> attacks `xor` rayAttacks dir x)
+            sq'
 
 -- }}}
 
