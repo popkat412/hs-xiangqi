@@ -1,157 +1,152 @@
-{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Xiangqi
-  ( -- * Move generators
-    pawnMoves,
-    knightMoves,
-    elephantMoves,
-    kingMoves,
-    advisorMoves,
-    rookMoves,
-    cannonMoves,
+  ( -- * Piece
+    Role (..),
+    Piece (..),
+
+    -- * Board
+    Board,
+
+    -- ** Constants
+    startingPosition,
+
+    -- ** Getting board data
+    getRoleSS,
+    getSideAt,
+    getRoleAt,
+    getPieceAt,
+
+    -- ** Misc
+    prettyBoard,
   )
 where
 
-import Data.Function ((&))
-import Data.Maybe (fromMaybe)
-import GHC.List (foldl')
+import Data.Char (toLower)
+import Data.Maybe (fromJust)
 import SquareSet
 
--- {{{ Move generation
+data Role = Rook | Knight | Elephant | Advisor | King | Pawn | Cannon
+  deriving stock (Eq, Show, Enum, Bounded)
 
--- TODO: Memoize
+data Piece = Piece
+  { role :: Role,
+    side :: Side
+  }
+  deriving stock (Eq, Show)
 
-pawnMoves ::
-  Side ->
-  Square ->
-  SquareSet
-pawnMoves side sq =
-  let dir = if side == Red then North else South
-      rank = getRank sq
-      file = getFile sq
-      acrossRiver = if side == Red then rank > R6 else rank < R5
-
-      bb = setBit sq empty
-
-      forward = shiftSS dir bb
-      west = if file == A then empty else shiftSS West bb
-      east = if file == I then empty else shiftSS East bb
-   in if acrossRiver then forward `union` east `union` west else forward
-
+-- | Show a 'Piece' as a single character.
+-- Red pieces are in uppercase, Black pieces are in lowercase.
+-- @
+-- [ (Rook    , 'R'),
+--   (Knight  , 'N'),
+--   (Elephant, 'E'),
+--   (Advisor , 'A'),
+--   (King    , 'K'),
+--   (Pawn    , 'P'),
+--   (Cannon  , 'C')
+-- ]
+-- @
 {- ORMOLU_DISABLE -}
--- TODO: Memoize
-knightMoves :: PieceContext -> Square -> SquareSet
-knightMoves =
-  blockablePieceMoves
-    [ (North, KnightNNE),
-      (North, KnightNNW),
-      (East , KnightENE),
-      (East , KnightESE),
-      (South, KnightSSE),
-      (South, KnightSSW),
-      (West , KnightWSW),
-      (West , KnightWNW)
-    ]
+compactPiece :: Piece -> Char
+compactPiece (Piece role side) =
+  let chars =
+        [ (Rook    , 'R'),
+          (Knight  , 'N'),
+          (Elephant, 'E'),
+          (Advisor , 'A'),
+          (King    , 'K'),
+          (Pawn    , 'P'),
+          (Cannon  , 'C')
+        ]
+      letter = fromJust $ lookup role chars -- if this is Nothing, theres a bug
+   in if side == Red then letter else toLower letter
 {- ORMOLU_ENABLE -}
 
--- TODO: Memoize
+data Board = Board
+  { occupied :: SquareSet,
+    red :: SquareSet,
+    black :: SquareSet,
+    rook :: SquareSet,
+    knight :: SquareSet,
+    elephant :: SquareSet,
+    advisor :: SquareSet,
+    king :: SquareSet,
+    pawn :: SquareSet,
+    cannon :: SquareSet
+  }
+  deriving stock (Eq, Show)
 
-elephantMoves :: PieceContext -> Square -> SquareSet
-elephantMoves =
-  blockablePieceMoves
-    [ (NorthEast, ElephantNE),
-      (SouthEast, ElephantSE),
-      (SouthWest, ElephantSW),
-      (NorthWest, ElephantNW)
-    ]
-
-kingMoves :: Side -> Square -> SquareSet
-kingMoves = palacePieceMoves [North, East, South, West]
-
-advisorMoves :: Side -> Square -> SquareSet
-advisorMoves = palacePieceMoves [NorthEast, SouthEast, SouthWest, NorthWest]
-
-rookMoves ::
-  -- | Square the rook is on
-  Square ->
-  -- | Occupied squares
-  SquareSet ->
-  -- | Rook moves
-  SquareSet
-rookMoves sq occupied = foldl' (\acc x -> acc `union` rayAttacksWithBlockers x) empty [North, East, South, West]
+-- | Pretty print a 'Board' for debugging
+prettyBoard :: Board -> String
+prettyBoard board =
+  genericBoardPrettyPrinter [maybePieceToChar $ getPieceAt i board | i <- [I10, H10 .. A1]]
   where
-    rayAttacksWithBlockers dir =
-      let attacks = rayAttacks dir sq
-          blockers = attacks `intersection` occupied
+    maybePieceToChar = maybe '.' compactPiece
 
-          bitScan = if offset dir < 0 then bitScanReverse else bitScanForward
-
-          sq' = bitScan blockers
-       in maybe
-            attacks
-            (\x -> attacks `xor` rayAttacks dir x)
-            sq'
-
-cannonMoves ::
-  -- | Square the cannon is on
-  Square ->
-  -- | Occupied squares
-  SquareSet ->
-  -- | Cannon moves
-  SquareSet
-cannonMoves sq occupied = foldl' (\acc x -> acc `union` cannonMoves' x) empty [North, East, South, West]
+-- |
+-- >>> putStrLn $ prettyBoard startingPosition
+-- 10   r n e a k a e n r
+-- 9    . . . . . . . . .
+-- 8    . c . . . . . c .
+-- 7    p . p . p . . . p
+-- 6    . . . . . . . . .
+-- 5    . . . . . . . . .
+-- 4    P . P . P . P . P
+-- 3    . C . . . . . C .
+-- 2    . . . . . . . . .
+-- 1    R N E A K A E N R
+-- <BLANKLINE>
+--      A B C D E F G H I
+startingPosition :: Board
+startingPosition = Board {..}
   where
-    cannonMoves' dir = fromMaybe empty $ do
-      -- Sliding attacks
-      let attacks = rayAttacks dir sq
-          blockers = attacks `intersection` occupied
-          bitScan = if offset dir < 0 then bitScanReverse else bitScanForward
-          blockedSq = bitScan blockers
-          slidingAttacks = maybe attacks (\x -> attacks `xor` rayAttacks dir x) blockedSq
+    rook = SquareSet 0x20200000000000000000101
+    knight = SquareSet 0x10400000000000000000082
+    elephant = SquareSet 0x8800000000000000000044
+    advisor = SquareSet 0x5000000000000000000028
+    king = SquareSet 0x2000000000000000000010
+    pawn = SquareSet 0x5540000aa8000000
+    cannon = SquareSet 0x410000000002080000
 
-      -- Jump attacks
-      let jumpAttacks' =
-            let clearFn = if offset dir < 0 then clearMS1B else clearLS1B
-             in do
-                  jumpAttackSquare <- clearFn blockers
-                  bitScan jumpAttackSquare
+    occupied = rook `union` knight `union` elephant `union` advisor `union` king `union` pawn `union` cannon
 
-      let jumpAttacks = maybe empty (\x -> empty & setBit x) jumpAttacks'
+    red = occupied `intersection` redMask
+    black = occupied `intersection` blackMask
 
-      -- Combine both
-      return $ slidingAttacks `union` jumpAttacks
+-- | Helper to get the 'SquareSet' of a particular 'Role' from the board.
+getRoleSS :: Role -> Board -> SquareSet
+getRoleSS Rook = rook
+getRoleSS Knight = knight
+getRoleSS Elephant = elephant
+getRoleSS Advisor = advisor
+getRoleSS King = king
+getRoleSS Pawn = pawn
+getRoleSS Cannon = cannon
 
--- {{{ Helpers
+-- | Get the side of the piece at a square.
+-- Is 'Nothing' if there is no piece at that square.
+getSideAt :: Square -> Board -> Maybe Side
+getSideAt sq board
+  | getBit sq (red board) = Just Red
+  | getBit sq (black board) = Just Black
+  | otherwise = Nothing
 
--- | Helper function to generate moves for a blockable piece, aka Knight and Elephant
-blockablePieceMoves ::
-  (BoardOffset a) =>
-  -- | Contains info about which squares are reachable and are blocked by what other square.
-  -- The 1st tuple item is the blocked square and the 2nd tuple item is the target square.
-  [(CompassDir, a)] ->
-  PieceContext ->
-  Square ->
-  SquareSet
-blockablePieceMoves info context sq = foldl' fn empty info
+-- | Get the Role of the piece at a square.
+-- Is 'Nothing' if there is no piece at that square.
+getRoleAt :: Square -> Board -> Maybe Role
+getRoleAt sq board = go [minBound ..]
   where
-    fn acc (block, targetDir) =
-      if getBitAtDir block context
-        then acc
-        else maybe acc (`setBit` acc) (sq `shiftSquare` targetDir)
+    go [] = Nothing
+    go (x : xs) =
+      if getBit sq (getRoleSS x board)
+        then Just x
+        else go xs
 
--- | Helper function to generate moves for a piece inside the palace, aka King and Advisor
-palacePieceMoves :: (BoardOffset a) => [a] -> Side -> Square -> SquareSet
-palacePieceMoves info side sq = foldl' fn empty info `intersection` palaceMask side
-  where
-    fn acc dir = maybe acc (`setBit` acc) (sq `shiftSquare` dir)
-
--- TODO: Memoize
-rayAttacks :: CompassDir -> Square -> SquareSet
-rayAttacks dir = go empty
-  where
-    go ss sq' = maybe ss (\x -> go (setBit x ss) x) (sq' `shiftSquare` dir)
-
--- }}}
-
--- }}}
+-- | Get the 'Piece' at a square
+getPieceAt :: Square -> Board -> Maybe Piece
+getPieceAt sq board = do
+  side <- getSideAt sq board
+  role <- getRoleAt sq board
+  return $ Piece {..}

@@ -37,6 +37,8 @@ module SquareSet
     SquareSet.empty,
     one,
     palaceMask,
+    redMask,
+    blackMask,
 
     -- ** Set operations
     union,
@@ -75,6 +77,7 @@ module SquareSet
     shiftSS,
 
     -- * Misc
+    genericBoardPrettyPrinter,
     prettySquareSet,
     prettyPieceContext,
   )
@@ -368,14 +371,24 @@ instance Show SquareSet where
 
 -- }}}
 
--- | Prints the Square Set in a nice board manner to aid debugging
-prettySquareSet :: SquareSet -> String
-prettySquareSet =
+-- | This is an __internal and exception throwing__ generic pretty printer used in 'perttySquareSet'
+-- and 'prettyBoard'. Use at your own risk.
+genericBoardPrettyPrinter ::
+  -- | A [Char] of length 90, the data to be printed
+  String ->
+  -- | Pretty printed
+  String
+genericBoardPrettyPrinter =
   unlines -- wow such point free
     . (++ ["", replicate 5 ' ' ++ intersperse ' ' ['A' .. 'I']])
     . zipWith (++) (map (padRight 5 ' ' . show) [10, 9 .. 1 :: Int])
     . map (intersperse ' ' . reverse)
     . splitEvery 9
+
+-- | Prints the Square Set in a nice board manner to aid debugging
+prettySquareSet :: SquareSet -> String
+prettySquareSet =
+  genericBoardPrettyPrinter
     . drop 6
     . showBits
 
@@ -546,6 +559,40 @@ palaceMask Red = SquareSet 0xE07038
 palaceMask Black = SquareSet 0x70381C0000000000000000
 
 -- }}}
+
+-- |
+-- >>> putStrLn $ prettySquareSet $ redMask
+-- 10   0 0 0 0 0 0 0 0 0
+-- 9    0 0 0 0 0 0 0 0 0
+-- 8    0 0 0 0 0 0 0 0 0
+-- 7    0 0 0 0 0 0 0 0 0
+-- 6    0 0 0 0 0 0 0 0 0
+-- 5    1 1 1 1 1 1 1 1 1
+-- 4    1 1 1 1 1 1 1 1 1
+-- 3    1 1 1 1 1 1 1 1 1
+-- 2    1 1 1 1 1 1 1 1 1
+-- 1    1 1 1 1 1 1 1 1 1
+-- <BLANKLINE>
+--      A B C D E F G H I
+redMask :: SquareSet
+redMask = SquareSet 0x1fffffffffff
+
+-- |
+-- >>> putStrLn $ prettySquareSet $ blackMask
+-- 10   1 1 1 1 1 1 1 1 1
+-- 9    1 1 1 1 1 1 1 1 1
+-- 8    1 1 1 1 1 1 1 1 1
+-- 7    1 1 1 1 1 1 1 1 1
+-- 6    1 1 1 1 1 1 1 1 1
+-- 5    0 0 0 0 0 0 0 0 0
+-- 4    0 0 0 0 0 0 0 0 0
+-- 3    0 0 0 0 0 0 0 0 0
+-- 2    0 0 0 0 0 0 0 0 0
+-- 1    0 0 0 0 0 0 0 0 0
+-- <BLANKLINE>
+--      A B C D E F G H I
+blackMask :: SquareSet
+blackMask = SquareSet 0xffffffffffffe00000000000
 
 -- }}}
 
