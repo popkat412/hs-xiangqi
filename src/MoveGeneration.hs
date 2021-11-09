@@ -17,23 +17,18 @@ import Data.Maybe (fromMaybe)
 import GHC.List (foldl')
 import SquareSet
 
--- TODO: Memoize, refactor to add helper functions for across river or not
-pawnMoves ::
-  Side ->
-  Square ->
-  SquareSet
+-- TODO: Memoize
+pawnMoves :: Side -> Square -> SquareSet
 pawnMoves side sq =
   let dir = if side == Red then North else South
-      rank = getRank sq
       file = getFile sq
-      acrossRiver = if side == Red then rank > R6 else rank < R5
 
-      bb = setBit sq empty
+      ss = setBit sq empty
 
-      forward = shiftSS dir bb
-      west = if file == A then empty else shiftSS West bb
-      east = if file == I then empty else shiftSS East bb
-   in if acrossRiver then forward `union` east `union` west else forward
+      forward = shiftSS dir ss
+      west = if file == A then empty else shiftSS West ss
+      east = if file == I then empty else shiftSS East ss
+   in if acrossRiver side sq then forward `union` east `union` west else forward
 
 {- ORMOLU_DISABLE -}
 -- TODO: Memoize
@@ -119,6 +114,10 @@ cannonMoves sq occupied = foldl' (\acc x -> acc `union` cannonMoves' x) empty [N
       return $ slidingAttacks `union` jumpAttacks
 
 -- {{{ Helpers
+
+acrossRiver :: Side -> Square -> Bool
+acrossRiver Red = flip getBit blackMask
+acrossRiver Black = flip getBit redMask
 
 -- | Helper function to generate moves for a blockable piece, aka Knight and Elephant
 blockablePieceMoves ::
