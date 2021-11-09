@@ -20,7 +20,6 @@ module SquareSet
     -- ** Predicates
     isEmpty,
     isUniversal,
-    intersection,
     isSubset,
     isDisjoint,
     isComplement,
@@ -42,11 +41,18 @@ module SquareSet
 
     -- ** Set operations
     union,
+    intersection,
     complement,
     relativeComplement,
-    SquareSet.xor,
+    shiftSS,
+
+    -- ** Square operations
+    getFile,
+    getRank,
+    shiftSquare,
 
     -- ** Bit manipulation
+    SquareSet.xor,
     getBit,
     setBit,
     setBits,
@@ -57,7 +63,7 @@ module SquareSet
     clearLS1B,
     clearMS1B,
 
-    -- ** Helpers
+    -- ** Misc
     squareSetToBool,
     traceSS,
 
@@ -71,12 +77,8 @@ module SquareSet
     PieceContext (..),
     getPieceContext,
     getBitAtDir,
-    getFile,
-    getRank,
-    shiftSquare,
-    shiftSS,
 
-    -- * Misc
+    -- * Pretty printers
     genericBoardPrettyPrinter,
     prettySquareSet,
     prettyPieceContext,
@@ -95,6 +97,32 @@ import Test.QuickCheck.Arbitrary
 type Bit = Bool
 
 {- ORMOLU_DISABLE -}
+
+-- {{{ Square Set
+
+-- {{{ Data types
+
+-- | A square set is also known as a bitboard, for more info see <https://www.chessprogramming.org/Bitboards>.
+-- In this case we're using a 'Word96' from "Data.DoubleWord" to represent the board, since the Xiangqi board is 9x10 instead of 8x8,
+-- it doesn't fit nicely into a 64 bit integer.
+--
+-- This is using Little-Endian Rank-File mapping (<https://www.chessprogramming.org/Square_Mapping_Considerations#Little-Endian_Rank-File_Mapping>)
+newtype SquareSet = SquareSet Word96 deriving newtype (Bits, FiniteBits)
+
+instance Eq SquareSet where
+  -- Ignore the most significant 6 bits because the board has 90 squares but it isn't a power of 2
+  (SquareSet a) == (SquareSet b) = (a .&. unusedBitsMask) == (b .&. unusedBitsMask)
+    where
+      unusedBitsMask :: Word96
+      unusedBitsMask = 0x3FFFFFFFFFFFFFFFFFFFFFF -- most significant 6 bits off, everything else on
+
+instance Arbitrary SquareSet where
+  -- For testing with QuickCheck
+  arbitrary = SquareSet <$> (Word96 <$> arbitrary <*> arbitrary)
+
+instance Show SquareSet where
+  -- Show in binary instead of base 10 for easier debugging
+  show = showBits
 
 -- | This datatype makes it easy to work with squares on the chess board.
 -- 'A1' is at the bottom left and 'I10' is at the top right of the board.
@@ -132,264 +160,100 @@ data Rank = R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10
 -- | The side of the piece/player.
 data Side = Red | Black deriving stock (Eq, Show, Enum)
 
--- {{{ Squares, Files and Ranks
+-- }}}
 
-getFile :: Square -> File
-getFile sq = toEnum $ fromEnum sq `mod` 9
+-- {{{ Predicates
 
-getRank :: Square -> Rank
-getRank sq = toEnum $ fromEnum sq `div` 9
+{-# INLINE isEmpty #-}
+isEmpty :: SquareSet -> Bool
+isEmpty = (== SquareSet.empty)
+
+{-# INLINE isUniversal #-}
+isUniversal :: SquareSet -> Bool
+isUniversal = (== universal)
+
+{-# INLINE isSubset #-}
+isSubset :: SquareSet -> SquareSet -> Bool
+a `isSubset` b = (a `intersection` b) == a
+
+{-# INLINE isDisjoint #-}
+isDisjoint :: SquareSet -> SquareSet -> Bool
+a `isDisjoint` b = isEmpty $ a `intersection` b
+
+{-# INLINE isComplement #-}
+isComplement :: SquareSet -> SquareSet -> Bool
+a `isComplement` b = complement a == b
 
 -- }}}
 
--- {{{ Compass rose,
+-- {{{ Files and ranks
 
--- | A type which represents a offset from a Square, aka \"shifting\" the square somewhere
-class (Enum a, Bounded a) => BoardOffset a where
-  -- | This will be added to the current bit number to find the location of the new bit.
-  --  For example, adding 1 essentially shifts the square left one space
-  --  (unless it is already on the leftmost \"column\", in which case it will be shifted to the right of the row above)
-  offset :: a -> Int
+-- TODO: Memoize
 
-  -- | This returns a mask where if the square is inside the mask,
-  --  then when shifted by the offset, will be out of the board.
-  --  I.e. if @'getBit' currentSquare ('outOfBoundsMask' dir)@ is true, then @'shiftSquare' currentSquare dir@ will return @Nothing@.
-  --
-  --  Why not just check the result of 'shiftSquare'? Because internally, 'shiftSquare' uses this function.
-  outOfBoundsMask :: a -> SquareSet
-
--- {{{ Compass Dir
-
--- | The 8 "normal" directions of the compass.
--- This is used for pieces like Pawns, Kings and Advisors>
-data CompassDir = North | NorthEast | East | SouthEast | South | SouthWest | West | NorthWest
-  deriving stock (Eq, Show, Enum, Bounded)
-
-instance BoardOffset CompassDir where
-  {-# INLINE offset #-}
-  offset North = 9
-  offset NorthEast = 10
-  offset East = 1
-  offset SouthEast = -8
-  offset South = -9
-  offset SouthWest = -10
-  offset West = -1
-  offset NorthWest = 8
-
-  outOfBoundsMask North = forRank R10
-  outOfBoundsMask NorthEast = forRank R10 `union` forFile I
-  outOfBoundsMask East = forFile I
-  outOfBoundsMask SouthEast = forFile I `union` forRank R1
-  outOfBoundsMask South = forRank R1
-  outOfBoundsMask SouthWest = forRank R1 `union` forFile A
-  outOfBoundsMask West = forFile A
-  outOfBoundsMask NorthWest = forFile A `union` forRank R10
-
--- }}}
-
--- {{{ Knight Dir
-
--- | The 8 directions a knight can jump.
--- NNE stands for North North East, ENE stands for East North East, etc.
-data KnightDir = KnightNNE | KnightENE | KnightESE | KnightSSE | KnightSSW | KnightWSW | KnightWNW | KnightNNW
-  deriving stock (Eq, Show, Enum, Bounded)
-
-instance BoardOffset KnightDir where
-  {-# INLINE offset #-}
-  offset KnightNNE = 19
-  offset KnightENE = 11
-  offset KnightESE = -7
-  offset KnightSSE = -17
-  offset KnightSSW = -19
-  offset KnightWSW = -11
-  offset KnightWNW = 7
-  offset KnightNNW = 17
-
-  outOfBoundsMask KnightNNE = forRanks [R10, R9] `union` forFile I
-  outOfBoundsMask KnightENE = forRank R10 `union` forFiles [H, I]
-  outOfBoundsMask KnightESE = forRank R1 `union` forFiles [H, I]
-  outOfBoundsMask KnightSSE = forRanks [R1, R2] `union` forFile I
-  outOfBoundsMask KnightSSW = forRanks [R1, R2] `union` forFile A
-  outOfBoundsMask KnightWSW = forRank R1 `union` forFiles [A, B]
-  outOfBoundsMask KnightWNW = forRank R10 `union` forFiles [A, B]
-  outOfBoundsMask KnightNNW = forRanks [R10, R9] `union` forFile A
-
--- }}}
-
--- {{{ Elephant Dir
-
--- | The 4 directions an elephant can jump.
-data ElephantDir = ElephantNE | ElephantSE | ElephantSW | ElephantNW
-  deriving stock (Eq, Show, Enum, Bounded)
-
-instance BoardOffset ElephantDir where
-  {-# INLINE offset #-}
-  offset ElephantNE = 20
-  offset ElephantSE = -16
-  offset ElephantSW = -20
-  offset ElephantNW = 16
-
-{- ORMOLU_DISABLE -}
-  outOfBoundsMask ElephantNE = forRanks [R10, R9] `union` forFiles [H, I]
-  outOfBoundsMask ElephantSE = forRanks [R1 , R2] `union` forFiles [H, I]
-  outOfBoundsMask ElephantSW = forRanks [R1 , R2] `union` forFiles [A, B]
-  outOfBoundsMask ElephantNW = forRanks [R10, R9] `union` forFiles [A, B]
-{- ORMOLU_ENABLE -}
-
--- }}}
-
--- {{{ Functions
-
--- | Shift an entire square set by a offset.
-shiftSS :: (BoardOffset a) => a -> SquareSet -> SquareSet
-shiftSS dir =
-  (`shift` offset dir)
-
--- | Shift a square by a offset.
--- If the new square is out of bounds, it returns Nothing.
+-- | Similar to 'forRank', this gets the square set with all the bits for that file turned on.
 --
 -- __For example:__
 --
--- >>> shiftSquare A1 North
--- Just A2
-shiftSquare :: (BoardOffset a) => Square -> a -> Maybe Square
-shiftSquare sq dir =
-  if getBit sq (outOfBoundsMask dir)
-    then Nothing -- the target will be out of the board
-    else safeToEnum $ fromEnum sq + offset dir
+-- >>> putStrLn $ prettySquareSet $ forFile A
+-- 10   1 0 0 0 0 0 0 0 0
+-- 9    1 0 0 0 0 0 0 0 0
+-- 8    1 0 0 0 0 0 0 0 0
+-- 7    1 0 0 0 0 0 0 0 0
+-- 6    1 0 0 0 0 0 0 0 0
+-- 5    1 0 0 0 0 0 0 0 0
+-- 4    1 0 0 0 0 0 0 0 0
+-- 3    1 0 0 0 0 0 0 0 0
+-- 2    1 0 0 0 0 0 0 0 0
+-- 1    1 0 0 0 0 0 0 0 0
+-- <BLANKLINE>
+--      A B C D E F G H I
+forFile :: File -> SquareSet
+forFile file =
+  let fileNum = fromEnum file
+   in foldl' (\bb num -> setBit (toEnum num) bb) empty [fileNum, fileNum + 9 .. 89]
 
--- }}}
+-- | Convenience function for turning on every bit except the ones in the file.
+--
+-- Equivalent to: @complement . 'forFile'@
+notFile :: File -> SquareSet
+notFile = complement . forFile
 
--- }}}
+-- | Similar to 'forRanks', this is a convenience function to get the union of multiple files.
+--
+-- /Equivalent to:/ @foldl\' 'union' 'empty' . map 'forFile'@
+forFiles :: [File] -> SquareSet
+forFiles = foldl' union empty . map forFile
 
--- {{{ Piece Context (for blockable pieces)
-
--- | This represents the 8 surrounding squares of a piece for memoization of blockable piece moves
--- (note that memoization has not been implemented yet).
--- The bits represent the eight compass directions Dir as defined above.
--- For example, the 1st bit from the right will be North, the 2nd bit NorthEast, ...
-newtype PieceContext = PieceContext Word8 deriving newtype (Eq, Bits, FiniteBits)
-
-instance Show PieceContext where
-  show = showBits
-
-{- ORMOLU_DISABLE -}
--- | Prints the 'PieceContext' in a nice board manner to aid debugging
-prettyPieceContext :: PieceContext -> String
-prettyPieceContext ctx =
-  let rBinString = reverse $ showBits ctx
-      f = (rBinString !!) . fromEnum
-   in
-        unlines $ map (intersperse ' ') [ -- this assumes that length binString == 8
-          [f NorthWest, f North, f NorthEast],
-          [f West     ,   'X'  , f East     ],
-          [f SouthWest, f South, f SouthEast]
-        ]
-{- ORMOLU_ENABLE -}
-
--- | Gets the 'PieceContext' around a particular square.
--- If the square is out of bounds, then it is just set to zero.
+-- | Similar to 'forFile', this returns the square set with all bits in the rank turned on.
 --
 -- __For example:__
 --
--- >>> putStrLn $ prettyPieceContext $ getPieceContext E4 (empty & setBit E5)
--- 0 1 0
--- 0 X 0
--- 0 0 0
---
--- >>> putStrLn $ prettyPieceContext $ getPieceContext A1 universal
--- 0 1 1
--- 0 X 1
--- 0 0 0
-getPieceContext :: Square -> SquareSet -> PieceContext
-getPieceContext sq ss =
-  toPieceContext $
-    map
-      ( \dir ->
-          let target = sq `shiftSquare` dir
-           in case target of
-                Just x -> getBit x ss
-                Nothing -> False
-      )
-      [(minBound :: CompassDir) ..]
-  where
-    toPieceContext :: [Bit] -> PieceContext
-    toPieceContext xs =
-      foldl'
-        ( \acc (idx, x) ->
-            if x
-              then acc .|. PieceContext 1 `shiftL` idx
-              else acc
-        )
-        (PieceContext 0)
-        (zip [0 ..] xs)
+-- >>> putStrLn $ prettySquareSet $ forRank R1
+-- 10   0 0 0 0 0 0 0 0 0
+-- 9    0 0 0 0 0 0 0 0 0
+-- 8    0 0 0 0 0 0 0 0 0
+-- 7    0 0 0 0 0 0 0 0 0
+-- 6    0 0 0 0 0 0 0 0 0
+-- 5    0 0 0 0 0 0 0 0 0
+-- 4    0 0 0 0 0 0 0 0 0
+-- 3    0 0 0 0 0 0 0 0 0
+-- 2    0 0 0 0 0 0 0 0 0
+-- 1    1 1 1 1 1 1 1 1 1
+-- <BLANKLINE>
+--     A B C D E F G H I
+forRank :: Rank -> SquareSet
+forRank rank =
+  let rankNum = fromEnum rank
+      startIdx = rankNum * 9
+   in foldl' (\bb num -> setBit (toEnum num) bb) empty [startIdx .. startIdx + 8]
 
--- | Helper function to get the bit at a particular 'CompassDir' of a 'PieceContext'.
+-- | Similar to 'forFiles', this is a convenience function to get the union of multiple ranks
 --
--- __For example:__
---
--- >>> putStrLn $ prettyPieceContext $ PieceContext 1
--- 0 1 0
--- 0 X 0
--- 0 0 0
---
--- >>> getBitAtDir North (PieceContext 1)
--- True
---
--- >>> getBitAtDir South (PieceContext 1)
--- False
-getBitAtDir :: CompassDir -> PieceContext -> Bit
-getBitAtDir dir = (/= PieceContext 0) . (.&. PieceContext 1 `shiftL` fromEnum dir)
+-- /Equivalent to:/ @foldl' 'union' 'empty' . map 'forRank'@
+forRanks :: [Rank] -> SquareSet
+forRanks = foldl' union empty . map forRank
 
 -- }}}
-
--- {{{ SquareSet
-
--- | A square set is also known as a bitboard, for more info see <https://www.chessprogramming.org/Bitboards>.
--- In this case we're using a 'Word96' from "Data.DoubleWord" to represent the board, since the Xiangqi board is 9x10 instead of 8x8,
--- it doesn't fit nicely into a 64 bit integer.
---
--- This is using Little-Endian Rank-File mapping (<https://www.chessprogramming.org/Square_Mapping_Considerations#Little-Endian_Rank-File_Mapping>)
-newtype SquareSet = SquareSet Word96 deriving newtype (Bits, FiniteBits)
-
--- {{{ Instances
-instance Eq SquareSet where
-  -- Ignore the most significant 6 bits because the board has 90 squares but it isn't a power of 2
-  (SquareSet a) == (SquareSet b) = (a .&. unusedBitsMask) == (b .&. unusedBitsMask)
-    where
-      unusedBitsMask :: Word96
-      unusedBitsMask = 0x3FFFFFFFFFFFFFFFFFFFFFF -- most significant 6 bits off, everything else on
-
-instance Arbitrary SquareSet where
-  -- For testing with QuickCheck
-  arbitrary = SquareSet <$> (Word96 <$> arbitrary <*> arbitrary)
-
-instance Show SquareSet where
-  -- Show in binary instead of base 10 for easier debugging
-  show = showBits
-
--- }}}
-
--- | This is an __internal and exception throwing__ generic pretty printer used in 'perttySquareSet'
--- and 'prettyBoard'. Use at your own risk.
-genericBoardPrettyPrinter ::
-  -- | A [Char] of length 90, the data to be printed
-  String ->
-  -- | Pretty printed
-  String
-genericBoardPrettyPrinter =
-  unlines -- wow such point free
-    . (++ ["", replicate 5 ' ' ++ intersperse ' ' ['A' .. 'I']])
-    . zipWith (++) (map (padRight 5 ' ' . show) [10, 9 .. 1 :: Int])
-    . map (intersperse ' ' . reverse)
-    . splitEvery 9
-
--- | Prints the Square Set in a nice board manner to aid debugging
-prettySquareSet :: SquareSet -> String
-prettySquareSet =
-  genericBoardPrettyPrinter
-    . drop 6
-    . showBits
 
 -- {{{ Constants
 
@@ -447,79 +311,6 @@ empty = SquareSet 0
 one :: SquareSet
 one = SquareSet 1
 
---- {{{ Files
--- TODO: Memoize
-
--- | Similar to 'forRank', this gets the square set with all the bits for that file turned on.
---
--- __For example:__
---
--- >>> putStrLn $ prettySquareSet $ forFile A
--- 10   1 0 0 0 0 0 0 0 0
--- 9    1 0 0 0 0 0 0 0 0
--- 8    1 0 0 0 0 0 0 0 0
--- 7    1 0 0 0 0 0 0 0 0
--- 6    1 0 0 0 0 0 0 0 0
--- 5    1 0 0 0 0 0 0 0 0
--- 4    1 0 0 0 0 0 0 0 0
--- 3    1 0 0 0 0 0 0 0 0
--- 2    1 0 0 0 0 0 0 0 0
--- 1    1 0 0 0 0 0 0 0 0
--- <BLANKLINE>
---      A B C D E F G H I
-forFile :: File -> SquareSet
-forFile file =
-  let fileNum = fromEnum file
-   in foldl' (\bb num -> setBit (toEnum num) bb) empty [fileNum, fileNum + 9 .. 89]
-
--- | Convenience function for turning on every bit except the ones in the file.
---
--- Equivalent to: @complement . 'forFile'@
-notFile :: File -> SquareSet
-notFile = complement . forFile
-
--- | Similar to 'forRanks', this is a convenience function to get the union of multiple files.
---
--- /Equivalent to:/ @foldl\' 'union' 'empty' . map 'forFile'@
-forFiles :: [File] -> SquareSet
-forFiles = foldl' union empty . map forFile
-
--- }}}
-
--- {{{ Ranks
-
--- | Similar to 'forFile', this returns the square set with all bits in the rank turned on.
---
--- __For example:__
---
--- >>> putStrLn $ prettySquareSet $ forRank R1
--- 10   0 0 0 0 0 0 0 0 0
--- 9    0 0 0 0 0 0 0 0 0
--- 8    0 0 0 0 0 0 0 0 0
--- 7    0 0 0 0 0 0 0 0 0
--- 6    0 0 0 0 0 0 0 0 0
--- 5    0 0 0 0 0 0 0 0 0
--- 4    0 0 0 0 0 0 0 0 0
--- 3    0 0 0 0 0 0 0 0 0
--- 2    0 0 0 0 0 0 0 0 0
--- 1    1 1 1 1 1 1 1 1 1
--- <BLANKLINE>
---     A B C D E F G H I
-forRank :: Rank -> SquareSet
-forRank rank =
-  let rankNum = fromEnum rank
-      startIdx = rankNum * 9
-   in foldl' (\bb num -> setBit (toEnum num) bb) empty [startIdx .. startIdx + 8]
-
--- | Similar to 'forFiles', this is a convenience function to get the union of multiple ranks
---
--- /Equivalent to:/ @foldl' 'union' 'empty' . map 'forRank'@
-forRanks :: [Rank] -> SquareSet
-forRanks = foldl' union empty . map forRank
-
--- }}}
-
--- {{{ Palace
 {-# INLINE palaceMask #-}
 
 -- | Masks the palace for a particular side.
@@ -557,8 +348,6 @@ palaceMask :: Side -> SquareSet
 palaceMask Red = SquareSet 0xE07038
 palaceMask Black = SquareSet 0x70381C0000000000000000
 
--- }}}
-
 -- |
 -- >>> putStrLn $ prettySquareSet $ redMask
 -- 10   0 0 0 0 0 0 0 0 0
@@ -595,38 +384,15 @@ blackMask = SquareSet 0xffffffffffffe00000000000
 
 -- }}}
 
--- {{{ Predicates
+-- {{{ Set operations
 
-{-# INLINE isEmpty #-}
-isEmpty :: SquareSet -> Bool
-isEmpty = (== SquareSet.empty)
-
-{-# INLINE isUniversal #-}
-isUniversal :: SquareSet -> Bool
-isUniversal = (== universal)
+{-# INLINE union #-}
+union :: SquareSet -> SquareSet -> SquareSet
+union = (.|.)
 
 {-# INLINE intersection #-}
 intersection :: SquareSet -> SquareSet -> SquareSet
 intersection = (.&.)
-
-{-# INLINE isSubset #-}
-isSubset :: SquareSet -> SquareSet -> Bool
-a `isSubset` b = (a `intersection` b) == a
-
-{-# INLINE isDisjoint #-}
-isDisjoint :: SquareSet -> SquareSet -> Bool
-a `isDisjoint` b = isEmpty $ a `intersection` b
-
-{-# INLINE isComplement #-}
-isComplement :: SquareSet -> SquareSet -> Bool
-a `isComplement` b = complement a == b
-
--- }}}
-
--- {{{ Set operations
-{-# INLINE union #-}
-union :: SquareSet -> SquareSet -> SquareSet
-union = (.|.)
 
 {-# INLINE complement #-}
 complement :: SquareSet -> SquareSet
@@ -636,13 +402,39 @@ complement = Bits.complement
 relativeComplement :: SquareSet -> SquareSet -> SquareSet
 relativeComplement a = Bits.complement . (a .&.)
 
-{-# INLINE xor #-}
-xor :: SquareSet -> SquareSet -> SquareSet
-xor = Bits.xor
+-- | Shift an entire square set by a offset.
+shiftSS :: (BoardOffset a) => a -> SquareSet -> SquareSet
+shiftSS dir =
+  (`shift` offset dir)
+
+-- }}}
+
+-- {{{ Square operations
+getFile :: Square -> File
+getFile sq = toEnum $ fromEnum sq `mod` 9
+
+getRank :: Square -> Rank
+getRank sq = toEnum $ fromEnum sq `div` 9
+
+-- | Shift a square by a offset.
+-- If the new square is out of bounds, it returns Nothing.
+--
+-- __For example:__
+--
+-- >>> shiftSquare A1 North
+-- Just A2
+shiftSquare :: (BoardOffset a) => Square -> a -> Maybe Square
+shiftSquare sq dir =
+  if getBit sq (outOfBoundsMask dir)
+    then Nothing -- the target will be out of the board
+    else safeToEnum $ fromEnum sq + offset dir
 
 -- }}}
 
 -- {{{ Bit manipulation
+{-# INLINE xor #-}
+xor :: SquareSet -> SquareSet -> SquareSet
+xor = Bits.xor
 
 {-# INLINE getBit #-}
 
@@ -699,13 +491,203 @@ clearMS1B = clearLSorBS1B bitScanReverse
 
 -- }}}
 
--- {{{ Helpers
+-- {{{ Misc
 squareSetToBool :: SquareSet -> Bool
 squareSetToBool = (/= empty)
-
--- }}}
 
 traceSS :: SquareSet -> a -> a
 traceSS = trace . prettySquareSet
 
 -- }}}
+
+-- }}}
+
+-- {{{ Board offsets
+
+-- | A type which represents a offset from a Square, aka \"shifting\" the square somewhere
+class (Enum a, Bounded a) => BoardOffset a where
+  -- | This will be added to the current bit number to find the location of the new bit.
+  --  For example, adding 1 essentially shifts the square left one space
+  --  (unless it is already on the leftmost \"column\", in which case it will be shifted to the right of the row above)
+  offset :: a -> Int
+
+  -- | This returns a mask where if the square is inside the mask,
+  --  then when shifted by the offset, will be out of the board.
+  --  I.e. if @'getBit' currentSquare ('outOfBoundsMask' dir)@ is true, then @'shiftSquare' currentSquare dir@ will return @Nothing@.
+  --
+  --  Why not just check the result of 'shiftSquare'? Because internally, 'shiftSquare' uses this function.
+  outOfBoundsMask :: a -> SquareSet
+
+-- | The 8 "normal" directions of the compass.
+-- This is used for pieces like Pawns, Kings and Advisors>
+data CompassDir = North | NorthEast | East | SouthEast | South | SouthWest | West | NorthWest
+  deriving stock (Eq, Show, Enum, Bounded)
+
+instance BoardOffset CompassDir where
+  {-# INLINE offset #-}
+  offset North = 9
+  offset NorthEast = 10
+  offset East = 1
+  offset SouthEast = -8
+  offset South = -9
+  offset SouthWest = -10
+  offset West = -1
+  offset NorthWest = 8
+
+  outOfBoundsMask North = forRank R10
+  outOfBoundsMask NorthEast = forRank R10 `union` forFile I
+  outOfBoundsMask East = forFile I
+  outOfBoundsMask SouthEast = forFile I `union` forRank R1
+  outOfBoundsMask South = forRank R1
+  outOfBoundsMask SouthWest = forRank R1 `union` forFile A
+  outOfBoundsMask West = forFile A
+  outOfBoundsMask NorthWest = forFile A `union` forRank R10
+
+-- | The 8 directions a knight can jump.
+-- NNE stands for North North East, ENE stands for East North East, etc.
+data KnightDir = KnightNNE | KnightENE | KnightESE | KnightSSE | KnightSSW | KnightWSW | KnightWNW | KnightNNW
+  deriving stock (Eq, Show, Enum, Bounded)
+
+instance BoardOffset KnightDir where
+  {-# INLINE offset #-}
+  offset KnightNNE = 19
+  offset KnightENE = 11
+  offset KnightESE = -7
+  offset KnightSSE = -17
+  offset KnightSSW = -19
+  offset KnightWSW = -11
+  offset KnightWNW = 7
+  offset KnightNNW = 17
+
+  outOfBoundsMask KnightNNE = forRanks [R10, R9] `union` forFile I
+  outOfBoundsMask KnightENE = forRank R10 `union` forFiles [H, I]
+  outOfBoundsMask KnightESE = forRank R1 `union` forFiles [H, I]
+  outOfBoundsMask KnightSSE = forRanks [R1, R2] `union` forFile I
+  outOfBoundsMask KnightSSW = forRanks [R1, R2] `union` forFile A
+  outOfBoundsMask KnightWSW = forRank R1 `union` forFiles [A, B]
+  outOfBoundsMask KnightWNW = forRank R10 `union` forFiles [A, B]
+  outOfBoundsMask KnightNNW = forRanks [R10, R9] `union` forFile A
+
+-- | The 4 directions an elephant can jump.
+data ElephantDir = ElephantNE | ElephantSE | ElephantSW | ElephantNW
+  deriving stock (Eq, Show, Enum, Bounded)
+
+instance BoardOffset ElephantDir where
+  {-# INLINE offset #-}
+  offset ElephantNE = 20
+  offset ElephantSE = -16
+  offset ElephantSW = -20
+  offset ElephantNW = 16
+
+{- ORMOLU_DISABLE -}
+  outOfBoundsMask ElephantNE = forRanks [R10, R9] `union` forFiles [H, I]
+  outOfBoundsMask ElephantSE = forRanks [R1 , R2] `union` forFiles [H, I]
+  outOfBoundsMask ElephantSW = forRanks [R1 , R2] `union` forFiles [A, B]
+  outOfBoundsMask ElephantNW = forRanks [R10, R9] `union` forFiles [A, B]
+{- ORMOLU_ENABLE -}
+
+-- }}}
+
+-- {{{ Piece context
+
+-- | This represents the 8 surrounding squares of a piece for memoization of blockable piece moves
+-- (note that memoization has not been implemented yet).
+-- The bits represent the eight compass directions Dir as defined above.
+-- For example, the 1st bit from the right will be North, the 2nd bit NorthEast, ...
+newtype PieceContext = PieceContext Word8 deriving newtype (Eq, Bits, FiniteBits)
+
+instance Show PieceContext where
+  show = showBits
+
+-- | Gets the 'PieceContext' around a particular square.
+-- If the square is out of bounds, then it is just set to zero.
+--
+-- __For example:__
+--
+-- >>> putStrLn $ prettyPieceContext $ getPieceContext E4 (empty & setBit E5)
+-- 0 1 0
+-- 0 X 0
+-- 0 0 0
+--
+-- >>> putStrLn $ prettyPieceContext $ getPieceContext A1 universal
+-- 0 1 1
+-- 0 X 1
+-- 0 0 0
+getPieceContext :: Square -> SquareSet -> PieceContext
+getPieceContext sq ss =
+  toPieceContext $
+    map
+      ( \dir ->
+          let target = sq `shiftSquare` dir
+           in case target of
+                Just x -> getBit x ss
+                Nothing -> False
+      )
+      [(minBound :: CompassDir) ..]
+  where
+    toPieceContext :: [Bit] -> PieceContext
+    toPieceContext xs =
+      foldl'
+        ( \acc (idx, x) ->
+            if x
+              then acc .|. PieceContext 1 `shiftL` idx
+              else acc
+        )
+        (PieceContext 0)
+        (zip [0 ..] xs)
+
+-- | Helper function to get the bit at a particular 'CompassDir' of a 'PieceContext'.
+--
+-- __For example:__
+--
+-- >>> putStrLn $ prettyPieceContext $ PieceContext 1
+-- 0 1 0
+-- 0 X 0
+-- 0 0 0
+--
+-- >>> getBitAtDir North (PieceContext 1)
+-- True
+--
+-- >>> getBitAtDir South (PieceContext 1)
+-- False
+getBitAtDir :: CompassDir -> PieceContext -> Bit
+getBitAtDir dir = (/= PieceContext 0) . (.&. PieceContext 1 `shiftL` fromEnum dir)
+
+-- }}}
+
+-- {{{ Pretty printers
+
+-- | This is an __internal and exception throwing__ generic pretty printer used in 'perttySquareSet'
+-- and 'prettyBoard'. Use at your own risk.
+genericBoardPrettyPrinter ::
+  -- | A [Char] of length 90, the data to be printed
+  String ->
+  -- | Pretty printed
+  String
+genericBoardPrettyPrinter =
+  unlines -- wow such point free
+    . (++ ["", replicate 5 ' ' ++ intersperse ' ' ['A' .. 'I']])
+    . zipWith (++) (map (padRight 5 ' ' . show) [10, 9 .. 1 :: Int])
+    . map (intersperse ' ' . reverse)
+    . splitEvery 9
+
+-- | Prints the Square Set in a nice board manner to aid debugging
+prettySquareSet :: SquareSet -> String
+prettySquareSet =
+  genericBoardPrettyPrinter
+    . drop 6
+    . showBits
+
+{- ORMOLU_DISABLE -}
+-- | Prints the 'PieceContext' in a nice board manner to aid debugging
+prettyPieceContext :: PieceContext -> String
+prettyPieceContext ctx =
+  let rBinString = reverse $ showBits ctx
+      f = (rBinString !!) . fromEnum
+   in
+        unlines $ map (intersperse ' ') [ -- this assumes that length binString == 8
+          [f NorthWest, f North, f NorthEast],
+          [f West     ,   'X'  , f East     ],
+          [f SouthWest, f South, f SouthEast]
+        ]
+{- ORMOLU_ENABLE -}

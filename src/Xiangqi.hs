@@ -2,9 +2,9 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Xiangqi
-  ( -- * Piece
-    Role (..),
+  ( -- * Pieces
     Piece (..),
+    Role (..),
 
     -- * Board
     Board,
@@ -27,6 +27,7 @@ import Data.Char (toLower)
 import Data.Maybe (fromJust)
 import SquareSet
 
+-- {{{ Pieces
 data Role = Rook | Knight | Elephant | Advisor | King | Pawn | Cannon
   deriving stock (Eq, Show, Enum, Bounded)
 
@@ -64,6 +65,9 @@ compactPiece (Piece role side) =
    in if side == Red then letter else toLower letter
 {- ORMOLU_ENABLE -}
 
+-- }}}
+
+-- {{{ Board
 data Board = Board
   { occupied :: SquareSet,
     red :: SquareSet,
@@ -78,12 +82,7 @@ data Board = Board
   }
   deriving stock (Eq, Show)
 
--- | Pretty print a 'Board' for debugging
-prettyBoard :: Board -> String
-prettyBoard board =
-  genericBoardPrettyPrinter [maybePieceToChar $ getPieceAt i board | i <- [I10, H10 .. A1]]
-  where
-    maybePieceToChar = maybe '.' compactPiece
+-- {{{ Constants
 
 -- |
 -- >>> putStrLn $ prettyBoard startingPosition
@@ -114,6 +113,10 @@ startingPosition = Board {..}
 
     red = occupied `intersection` redMask
     black = occupied `intersection` blackMask
+
+-- }}}
+
+-- {{{ Getting board data
 
 -- | Helper to get the 'SquareSet' of a particular 'Role' from the board.
 getRoleSS :: Role -> Board -> SquareSet
@@ -150,3 +153,18 @@ getPieceAt sq board = do
   side <- getSideAt sq board
   role <- getRoleAt sq board
   return $ Piece {..}
+
+-- }}}
+
+-- {{{ Misc
+
+-- | Pretty print a 'Board' for debugging
+prettyBoard :: Board -> String
+prettyBoard board =
+  genericBoardPrettyPrinter [maybePieceToChar $ getPieceAt i board | i <- [I10, H10 .. A1]]
+  where
+    maybePieceToChar = maybe '.' compactPiece
+
+-- }}}
+
+-- }}}
