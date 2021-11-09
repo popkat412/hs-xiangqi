@@ -243,8 +243,7 @@ instance BoardOffset ElephantDir where
 -- | Shift an entire square set by a offset.
 shiftSS :: (BoardOffset a) => a -> SquareSet -> SquareSet
 shiftSS dir =
-  let off = offset dir
-   in (`shift` abs off)
+  (`shift` offset dir)
 
 -- | Shift a square by a offset.
 -- If the new square is out of bounds, it returns Nothing.
