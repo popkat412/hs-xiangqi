@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -13,10 +14,17 @@ module Xiangqi
     startingPosition,
 
     -- ** Getting board data
+    isOccupied,
     getRoleSS,
     getSideAt,
     getRoleAt,
     getPieceAt,
+
+    -- ** Setting board dat
+    setRoleSS,
+    setSideSS,
+    takePieceAt,
+    setPieceAt,
 
     -- ** Misc
     prettyBoard,
@@ -24,7 +32,8 @@ module Xiangqi
 where
 
 import Data.Char (toLower)
-import Data.Maybe (fromJust)
+import Data.Function ((&))
+import Data.Maybe (fromJust, fromMaybe)
 import SquareSet
 
 -- {{{ Pieces
@@ -128,6 +137,10 @@ getRoleSS King = king
 getRoleSS Pawn = pawn
 getRoleSS Cannon = cannon
 
+getSideSS :: Side -> Board -> SquareSet
+getSideSS Red = red
+getSideSS Black = black
+
 -- | Get the side of the piece at a square.
 -- Is 'Nothing' if there is no piece at that square.
 getSideAt :: Square -> Board -> Maybe Side
@@ -153,6 +166,53 @@ getPieceAt sq board = do
   side <- getSideAt sq board
   role <- getRoleAt sq board
   return $ Piece {..}
+
+-- | Returns true if the square is occupied
+isOccupied :: Square -> Board -> Bool
+isOccupied sq board = getBit sq (occupied board)
+
+-- }}}
+
+-- {{{ Setting board data
+
+takePieceAt :: Square -> Board -> (Maybe Piece, Board)
+takePieceAt sq board = fromMaybe (Nothing, board) do
+  piece <- getPieceAt sq board
+  let role' = role piece
+      side' = side piece
+
+      oldRoleSS = getRoleSS role' board
+      oldSideSS = getSideSS side' board
+
+      newRoleSS = clearBit sq oldRoleSS
+      newSideSS = clearBit sq oldSideSS
+  return (Just piece, board & setRoleSS role' newRoleSS & setSideSS side' newSideSS)
+
+-- TODO: see if there's a better way to do this
+setRoleSS :: Role -> SquareSet -> Board -> Board
+setRoleSS Rook ss board = board {rook = ss}
+setRoleSS Knight ss board = board {knight = ss}
+setRoleSS Elephant ss board = board {elephant = ss}
+setRoleSS Advisor ss board = board {advisor = ss}
+setRoleSS King ss board = board {king = ss}
+setRoleSS Pawn ss board = board {pawn = ss}
+setRoleSS Cannon ss board = board {cannon = ss}
+
+setSideSS :: Side -> SquareSet -> Board -> Board
+setSideSS Red ss board = board {red = ss}
+setSideSS Black ss board = board {black = ss}
+
+setPieceAt :: Square -> Piece -> Board -> (Maybe Piece, Board)
+setPieceAt sq piece board =
+  let role' = role piece
+      side' = side piece
+      (oldPiece, board') = takePieceAt sq board
+      oldRoleSS = getRoleSS role' board'
+      oldSideSS = getSideSS side' board'
+
+      newRoleSS = setBit sq oldRoleSS
+      newSideSS = setBit sq oldSideSS
+   in (oldPiece, board' & setRoleSS role' newRoleSS & setSideSS side' newSideSS)
 
 -- }}}
 

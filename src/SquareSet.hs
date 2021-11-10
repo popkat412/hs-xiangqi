@@ -96,8 +96,6 @@ import Test.QuickCheck.Arbitrary
 
 type Bit = Bool
 
-{- ORMOLU_DISABLE -}
-
 -- {{{ Square Set
 
 -- {{{ Data types
@@ -127,12 +125,13 @@ instance Show SquareSet where
 -- | This datatype makes it easy to work with squares on the chess board.
 -- 'A1' is at the bottom left and 'I10' is at the top right of the board.
 -- From this perspective, the 'Red' side will be at the bottom.
--- 
+--
 -- The enum instance corresponds with the bit number in the square set / bitboard.
 -- For example, 'A1' has an enum value of 0 and thus will be represented by the first bit from the right in the bitboard.
--- 
+--
 -- The reason this isn't implemented as a combination of 'File's and 'Rank's
 -- is so it's cleaner to write @A1@ instead of @Square A R1@
+{- ORMOLU_DISABLE -}
 data Square =
   A1  | B1  | C1  | D1  | E1  | F1  | G1  | H1  | I1  |
   A2  | B2  | C2  | D2  | E2  | F2  | G2  | H2  | I2  |
