@@ -37,17 +37,25 @@ library
   import:              common-options
   hs-source-dirs:      src
   build-depends:       data-dword
+                     , mtl
+                     , transformers
                      , text
                      , containers
                      , QuickCheck
-  exposed-modules:     Xiangqi, SquareSet, MoveGeneration
-  other-modules:       Helpers
+  exposed-modules:     Xiangqi
+                     , Xiangqi.SquareSet
+                     , Xiangqi.MoveGeneration
+                     , Xiangqi.Board
+                     , Xiangqi.Helpers
+  other-modules:       
 
 executable xiangqi
   import:              common-options
   hs-source-dirs:      app
   main-is:             Main.hs
   build-depends:       xiangqi
+                     , mtl
+                     , transformers
   ghc-options:         -threaded
                        -rtsopts
                        -with-rtsopts=-N

@@ -1,7 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DerivingStrategies #-}
 
-module MoveGeneration
+module Xiangqi.MoveGeneration
   ( pawnMoves,
     knightMoves,
     elephantMoves,
@@ -15,7 +15,7 @@ where
 import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import GHC.List (foldl')
-import SquareSet
+import Xiangqi.SquareSet
 
 -- TODO: Memoize
 pawnMoves :: Side -> Square -> SquareSet

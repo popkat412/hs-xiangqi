@@ -7,7 +7,7 @@
 -- Copyright   : (c) Wang Yunze, 2021
 -- License     : GPL-3
 -- Stability   : experimental
-module SquareSet
+module Xiangqi.SquareSet
   ( -- * Square set
 
     -- ** Data types
@@ -33,7 +33,7 @@ module SquareSet
 
     -- ** Constants
     universal,
-    SquareSet.empty,
+    Xiangqi.SquareSet.empty,
     one,
     palaceMask,
     redMask,
@@ -52,7 +52,7 @@ module SquareSet
     shiftSquare,
 
     -- ** Bit manipulation
-    SquareSet.xor,
+    Xiangqi.SquareSet.xor,
     getBit,
     setBit,
     setBits,
@@ -91,8 +91,8 @@ import Data.DoubleWord (Word96 (..))
 import Data.List (foldl', intersperse)
 import Data.Word (Word8)
 import Debug.Trace (trace)
-import Helpers (padRight, safeToEnum, showBits, splitEvery)
 import Test.QuickCheck.Arbitrary
+import Xiangqi.Helpers (padRight, safeToEnum, showBits, splitEvery)
 
 type Bit = Bool
 
@@ -165,7 +165,7 @@ data Side = Red | Black deriving stock (Eq, Show, Enum)
 
 {-# INLINE isEmpty #-}
 isEmpty :: SquareSet -> Bool
-isEmpty = (== SquareSet.empty)
+isEmpty = (== Xiangqi.SquareSet.empty)
 
 {-# INLINE isUniversal #-}
 isUniversal :: SquareSet -> Bool
