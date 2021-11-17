@@ -3,12 +3,9 @@ module Xiangqi.Helpers
     splitEvery,
     safeToEnum,
     padRight,
-    constState,
-    stateTtoState,
   )
 where
 
-import Control.Monad.State
 import Data.Bits (FiniteBits, finiteBitSize, shiftR, testBit)
 
 showBits :: FiniteBits a => a -> String
@@ -39,9 +36,3 @@ safeToEnum = enumIfBetween minBound maxBound
 
 padRight :: Int -> a -> [a] -> [a]
 padRight num x xs = take num $ xs ++ repeat x
-
-constState :: (MonadState a m) => (a -> b) -> m b
-constState fn = state $ \x -> (fn x, x)
-
-stateTtoState :: (Monad m) => StateT s m a -> State s (m a)
-stateTtoState s = gets (evalStateT s)

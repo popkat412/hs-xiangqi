@@ -16,6 +16,7 @@ import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import GHC.List (foldl')
 import Xiangqi.SquareSet
+import Xiangqi.Types (File (..), Side (..), Square, SquareSet)
 
 -- TODO: Memoize
 pawnMoves :: Side -> Square -> SquareSet

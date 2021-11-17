@@ -41,13 +41,16 @@ library
                      , transformers
                      , text
                      , containers
+                     , microlens
+                     , microlens-th
+                     , microlens-mtl
                      , QuickCheck
   exposed-modules:     Xiangqi
                      , Xiangqi.SquareSet
                      , Xiangqi.MoveGeneration
                      , Xiangqi.Board
-                     , Xiangqi.Helpers
-  other-modules:       
+                     , Xiangqi.Types
+  other-modules:       Xiangqi.Helpers
 
 executable xiangqi
   import:              common-options
@@ -66,9 +69,11 @@ test-suite xiangqi-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       xiangqi
+                     , mtl
                      , tasty
                      , tasty-quickcheck 
                      , tasty-smallcheck 
+                     , tasty-hunit
                      , test-invariant
   ghc-options:         -threaded
                        -rtsopts

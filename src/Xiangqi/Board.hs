@@ -2,17 +2,16 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Xiangqi.Board
-  ( -- * Pieces
-    Piece (..),
-    Role (..),
-
-    -- * Board
-    Board (rook, knight, elephant, advisor, king, pawn, cannon, red, black, occupied),
+  ( -- * Board
 
     -- ** Constants
+    emptyPosition,
     startingPosition,
 
     -- ** Getting board data
@@ -31,65 +30,67 @@ where
 import Control.Monad.State
 import Data.Char (toLower)
 import Data.Maybe (fromJust)
-import Xiangqi.Helpers (constState)
+import Lens.Micro
+import Lens.Micro.Mtl
+import Test.QuickCheck (Arbitrary (arbitrary))
 import Xiangqi.SquareSet
-
--- {{{ Pieces
-data Role = Rook | Knight | Elephant | Advisor | King | Pawn | Cannon
-  deriving stock (Eq, Show, Enum, Bounded)
-
-data Piece = Piece
-  { role :: Role,
-    side :: Side
-  }
-  deriving stock (Eq, Show)
-
--- | Show a 'Piece' as a single character.
--- Red pieces are in uppercase, Black pieces are in lowercase.
--- @
--- [ (Rook    , 'R'),
---   (Knight  , 'N'),
---   (Elephant, 'E'),
---   (Advisor , 'A'),
---   (King    , 'K'),
---   (Pawn    , 'P'),
---   (Cannon  , 'C')
--- ]
--- @
-{- ORMOLU_DISABLE -}
-compactPiece :: Piece -> Char
-compactPiece (Piece role side) =
-  let chars =
-        [ (Rook    , 'R'),
-          (Knight  , 'N'),
-          (Elephant, 'E'),
-          (Advisor , 'A'),
-          (King    , 'K'),
-          (Pawn    , 'P'),
-          (Cannon  , 'C')
-        ]
-      letter = fromJust $ lookup role chars -- if this is Nothing, theres a bug
-   in if side == Red then letter else toLower letter
-{- ORMOLU_ENABLE -}
-
--- }}}
+import Xiangqi.Types
 
 -- {{{ Board
-data Board = MkBoard
-  { occupied :: SquareSet,
-    red :: SquareSet,
-    black :: SquareSet,
-    rook :: SquareSet,
-    knight :: SquareSet,
-    elephant :: SquareSet,
-    advisor :: SquareSet,
-    king :: SquareSet,
-    pawn :: SquareSet,
-    cannon :: SquareSet
-  }
-  deriving stock (Eq, Show)
+
+-- Screw orphaned instances, this is within the same library dammit
+-- I'm only doing orphaned instances for this one because it requires
+-- other helper functions like 'union' and 'intersection', and doing this in
+-- Types.hs would cause cyclic dependencies
+instance Arbitrary Board where
+  arbitrary = do
+    _rook <- arbitrary
+    _knight <- arbitrary
+    _elephant <- arbitrary
+    _advisor <- arbitrary
+    _king <- arbitrary
+    _pawn <- arbitrary
+    _cannon <- arbitrary
+
+    let _occupied = _rook `union` _knight `union` _elephant `union` _advisor `union` _king `union` _pawn `union` _cannon
+        _red = _occupied `intersection` redMask
+        _black = _occupied `intersection` blackMask
+
+    return $ MkBoard {..}
+
+instance Show Board where
+  show = prettyBoard
 
 -- {{{ Constants
+
+-- |
+-- >>> putStrLn $ prettyBoard empty
+-- 10   . . . . . . . . .
+-- 9    . . . . . . . . .
+-- 8    . . . . . . . . .
+-- 7    . . . . . . . . .
+-- 6    . . . . . . . . .
+-- 5    . . . . . . . . .
+-- 4    . . . . . . . . .
+-- 3    . . . . . . . . .
+-- 2    . . . . . . . . .
+-- 1    . . . . . . . . .
+-- <BLANKLINE>
+--      A B C D E F G H I
+emptyPosition :: Board
+emptyPosition =
+  MkBoard
+    { _rook = empty,
+      _knight = empty,
+      _elephant = empty,
+      _advisor = empty,
+      _king = empty,
+      _pawn = empty,
+      _cannon = empty,
+      _red = empty,
+      _black = empty,
+      _occupied = empty
+    }
 
 -- |
 -- >>> putStrLn $ prettyBoard startingPosition
@@ -108,36 +109,22 @@ data Board = MkBoard
 startingPosition :: Board
 startingPosition = MkBoard {..}
   where
-    rook = SquareSet 0x20200000000000000000101
-    knight = SquareSet 0x10400000000000000000082
-    elephant = SquareSet 0x8800000000000000000044
-    advisor = SquareSet 0x5000000000000000000028
-    king = SquareSet 0x2000000000000000000010
-    pawn = SquareSet 0x5540000aa8000000
-    cannon = SquareSet 0x410000000002080000
+    _rook = SquareSet 0x20200000000000000000101
+    _knight = SquareSet 0x10400000000000000000082
+    _elephant = SquareSet 0x8800000000000000000044
+    _advisor = SquareSet 0x5000000000000000000028
+    _king = SquareSet 0x2000000000000000000010
+    _pawn = SquareSet 0x5540000aa8000000
+    _cannon = SquareSet 0x410000000002080000
 
-    occupied = rook `union` knight `union` elephant `union` advisor `union` king `union` pawn `union` cannon
+    _occupied = _rook `union` _knight `union` _elephant `union` _advisor `union` _king `union` _pawn `union` _cannon
 
-    red = occupied `intersection` redMask
-    black = occupied `intersection` blackMask
+    _red = _occupied `intersection` redMask
+    _black = _occupied `intersection` blackMask
 
 -- }}}
 
 -- {{{ Getting board data
-
--- | Helper to get the 'SquareSet' of a particular 'Role' from the board.
-getRoleSS :: (MonadState Board m) => Role -> m SquareSet
-getRoleSS Rook = constState rook
-getRoleSS Knight = constState knight
-getRoleSS Elephant = constState elephant
-getRoleSS Advisor = constState advisor
-getRoleSS King = constState king
-getRoleSS Pawn = constState pawn
-getRoleSS Cannon = constState cannon
-
-getSideSS :: (MonadState Board m) => Side -> m SquareSet
-getSideSS Red = constState red
-getSideSS Black = constState black
 
 -- | Get the side of the piece at a square.
 -- Is 'Nothing' if there is no piece at that square.
@@ -145,8 +132,8 @@ getSideAt :: Square -> StateT Board Maybe Side
 getSideAt sq = do
   board <- get
   if
-      | getBit sq (red board) -> return Red
-      | getBit sq (black board) -> return Black
+      | getBit sq (board ^. red) -> return Red
+      | getBit sq (board ^. black) -> return Black
       | otherwise -> lift Nothing
 
 -- | Get the Role of the piece at a square.
@@ -154,9 +141,10 @@ getSideAt sq = do
 getRoleAt :: Square -> StateT Board Maybe Role
 getRoleAt sq = go [minBound ..]
   where
+    go :: [Role] -> StateT Board Maybe Role
     go [] = lift Nothing
     go (x : xs) = do
-      ss <- getRoleSS x
+      ss <- use $ getLens x
       if getBit sq ss
         then return x
         else go xs
@@ -164,65 +152,34 @@ getRoleAt sq = go [minBound ..]
 -- | Get the 'Piece' at a square
 getPieceAt :: Square -> StateT Board Maybe Piece
 getPieceAt sq = do
-  side <- getSideAt sq
-  role <- getRoleAt sq
-  return Piece {..}
+  s <- getSideAt sq
+  r <- getRoleAt sq
+  return Piece {_side = s, _role = r}
 
 -- | Returns true if the square is occupied
 isOccupied :: Square -> Board -> Bool
-isOccupied sq board = getBit sq (occupied board)
+isOccupied sq board = getBit sq (board ^. occupied)
 
 -- }}}
 
 -- {{{ Setting board data
-
--- TODO: Use lens
 takePieceAt :: Square -> StateT Board Maybe Piece
 takePieceAt sq = do
   piece <- getPieceAt sq
-  role <- getRoleAt sq
-  side <- getSideAt sq
+  r <- getRoleAt sq
+  s <- getSideAt sq
 
-  oldRoleSS <- getRoleSS role
-  oldSideSS <- getSideSS side
-
-  let newRoleSS = clearBit sq oldRoleSS
-      newSideSS = clearBit sq oldSideSS
-
-  setRoleSS role newRoleSS
-  setSideSS side newSideSS
+  getLens r %= clearBit sq
+  getLens s %= clearBit sq
 
   return piece
 
--- TODO: see if there's a better way to do this
-setRoleSS :: (MonadState Board m) => Role -> SquareSet -> m ()
-setRoleSS Rook ss = modify (\board -> board {rook = ss})
-setRoleSS Knight ss = modify (\board -> board {knight = ss})
-setRoleSS Elephant ss = modify (\board -> board {elephant = ss})
-setRoleSS Advisor ss = modify (\board -> board {advisor = ss})
-setRoleSS King ss = modify (\board -> board {king = ss})
-setRoleSS Pawn ss = modify (\board -> board {pawn = ss})
-setRoleSS Cannon ss = modify (\board -> board {cannon = ss})
-
-setSideSS :: (MonadState Board m) => Side -> SquareSet -> m ()
-setSideSS Red ss = modify (\board -> board {red = ss})
-setSideSS Black ss = modify (\board -> board {black = ss})
-
 setPieceAt :: Square -> Piece -> StateT Board Maybe Piece
 setPieceAt sq piece = do
-  let role' = role piece
-      side' = side piece
-
   oldPiece <- takePieceAt sq
 
-  oldRoleSS <- getRoleSS role'
-  oldSideSS <- getSideSS side'
-
-  let newRoleSS = setBit sq oldRoleSS
-      newSideSS = setBit sq oldSideSS
-
-  setRoleSS role' newRoleSS
-  setSideSS side' newSideSS
+  getLens (piece ^. role) %= setBit sq
+  getLens (piece ^. side) %= setBit sq
 
   return oldPiece
 
@@ -239,5 +196,37 @@ prettyBoard board =
     maybePieceToChar = maybe '.' compactPiece
 
 -- }}}
+
+-- }}}
+
+-- {{{ Pieces
+
+-- | Show a 'Piece' as a single character.
+-- Red pieces are in uppercase, Black pieces are in lowercase.
+-- @
+-- [ (Rook    , 'R'),
+--   (Knight  , 'N'),
+--   (Elephant, 'E'),
+--   (Advisor , 'A'),
+--   (King    , 'K'),
+--   (Pawn    , 'P'),
+--   (Cannon  , 'C')
+-- ]
+-- @
+{- ORMOLU_DISABLE -}
+compactPiece :: Piece -> Char
+compactPiece (Piece r s) =
+  let chars =
+        [ (Rook    , 'R'),
+          (Knight  , 'N'),
+          (Elephant, 'E'),
+          (Advisor , 'A'),
+          (King    , 'K'),
+          (Pawn    , 'P'),
+          (Cannon  , 'C')
+        ]
+      letter = fromJust $ lookup r chars -- if this is Nothing, theres a bug
+   in if s == Red then letter else toLower letter
+{- ORMOLU_ENABLE -}
 
 -- }}}
