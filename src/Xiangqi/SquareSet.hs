@@ -73,7 +73,6 @@ module Xiangqi.SquareSet
     getBitAtDir,
 
     -- * Pretty printers
-    genericBoardPrettyPrinter,
     prettySquareSet,
     prettyPieceContext,
   )
@@ -84,15 +83,12 @@ import qualified Data.Bits as Bits
 import Data.List (foldl', intersperse)
 import Data.Word (Word8)
 import Debug.Trace (trace)
-import Xiangqi.Helpers (padRight, safeToEnum, showBits, splitEvery)
+import Xiangqi.Helpers (genericBoardPrettyPrinter, safeToEnum, showBits)
 import Xiangqi.Types
 
 type Bit = Bool
 
 -- {{{ Square Set
-
-instance Show SquareSet where
-  show = prettySquareSet
 
 -- {{{ Predicates
 
@@ -589,26 +585,10 @@ getBitAtDir dir = (/= PieceContext 0) . (.&. PieceContext 1 `shiftL` fromEnum di
 
 -- {{{ Pretty printers
 
--- | This is an __internal and exception throwing__ generic pretty printer used in 'perttySquareSet'
--- and 'prettyBoard'. Use at your own risk.
-genericBoardPrettyPrinter ::
-  -- | A [Char] of length 90, the data to be printed
-  String ->
-  -- | Pretty printed
-  String
-genericBoardPrettyPrinter =
-  unlines -- wow such point free
-    . (++ ["", replicate 5 ' ' ++ intersperse ' ' ['A' .. 'I']])
-    . zipWith (++) (map (padRight 5 ' ' . show) [10, 9 .. 1 :: Int])
-    . map (intersperse ' ' . reverse)
-    . splitEvery 9
-
 -- | Prints the Square Set in a nice board manner to aid debugging
 prettySquareSet :: SquareSet -> String
-prettySquareSet =
-  genericBoardPrettyPrinter
-    . drop 6
-    . showBits
+prettySquareSet ss@(SquareSet word) =
+  genericBoardPrettyPrinter (show word) (drop 6 $ showBits ss)
 
 {- ORMOLU_DISABLE -}
 -- | Prints the 'PieceContext' in a nice board manner to aid debugging

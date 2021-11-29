@@ -25,9 +25,9 @@ unitTests =
     "UNIT TESTS"
     [ testGroup
         "Board"
-        [ testCase "getPieceAt 1" $ evalStateT (getPieceAt A1) startingPosition @?= Just Piece {_role = Rook, _side = Red},
-          testCase "getPieceAt 2" $ evalStateT (getPieceAt B1) startingPosition @?= Just Piece {_role = Knight, _side = Red},
-          testCase "getPieceAt 3" $ evalStateT (getPieceAt A2) startingPosition @?= Nothing
+        [ testCase "getPieceAt 1" $ evalState (getPieceAt A1) startingPosition @?= Just Piece {_role = Rook, _side = Red},
+          testCase "getPieceAt 2" $ evalState (getPieceAt B1) startingPosition @?= Just Piece {_role = Knight, _side = Red},
+          testCase "getPieceAt 3" $ evalState (getPieceAt A2) startingPosition @?= Nothing
         ]
     ]
 
@@ -94,26 +94,34 @@ qcProps =
         [ testGroup
             "isOccupied"
             [ QC.testProperty "isOccupied should always return False if the board is empty" $
-                \sq -> not (isOccupied sq emptyPosition)
+                \sq -> not (isOccupied' sq emptyPosition)
             ],
           testGroup
             "getPieceAt"
             [ QC.testProperty "getPieceAt shouldn't change the board state" $
-                \sq board -> let newBoard = execStateT (getPieceAt sq) board in newBoard == Just board || isNothing newBoard,
+                \sq board -> let newBoard = execState (getPieceAt sq) board in newBoard == board,
               QC.testProperty "getPieceAt should always return Nothing if the board is empty" $
-                \sq -> runOnEmptyBoard (getPieceAt sq)
+                \sq -> isNothing $ evalState (getPieceAt sq) emptyPosition
             ],
           testGroup
             "takePieceAt"
             [ QC.testProperty "takePieceAt should always return Nothing if the board is empty" $
-                \sq -> runOnEmptyBoard (takePieceAt sq),
+                \sq -> isNothing $ evalState (takePieceAt sq) emptyPosition,
               QC.testProperty "takePieceAt should only change either 1 or 0 pieces" $
-                \sq -> assertOnlyChangesOneOrZeroPieces (takePieceAt sq)
+                \sq -> assertOnlyChangesOneOrZeroPieces (takePieceAt sq),
+              QC.testProperty "takePieceAt should keep board in internally consistent state" $
+                \sq board -> assertKeepsInternalConsistency (takePieceAt sq) board
             ],
           testGroup
             "setPieceAt"
             [ QC.testProperty "setPieceAt should only change either 1 or 0 pieces" $
-                \sq piece -> assertOnlyChangesOneOrZeroPieces (setPieceAt sq piece)
+                \sq piece -> assertOnlyChangesOneOrZeroPieces (setPieceAt sq piece),
+              QC.testProperty "setPieceAt should keep board in internally consistent state" $
+                \sq piece -> assertKeepsInternalConsistency (setPieceAt sq piece)
+            ],
+          testGroup
+            "testing the tests"
+            [ QC.testProperty "test that Arbitrary Board actually generates internally consistent boards" $ \board -> checkInternalConsistency board
             ]
         ]
         -- }}}
@@ -122,34 +130,25 @@ qcProps =
 -- }}}
 
 -- {{{ Helpers
-runOnEmptyBoard :: StateT Board Maybe a -> Bool
-runOnEmptyBoard s = isNothing $ execStateT s emptyPosition
-
-assertOnlyChangesOneOrZeroPieces :: StateT Board Maybe a -> Board -> Bool
+assertOnlyChangesOneOrZeroPieces :: State Board a -> Board -> Bool
 assertOnlyChangesOneOrZeroPieces s board =
-  let newBoard = execStateT s board
-      numChanges = pieceDiffCount board $ fromMaybe board newBoard
+  let newBoard = execState s board
+      numChanges = pieceDiffCount board newBoard
    in numChanges == 1 || numChanges == 0
 
 pieceDiffCount ::
-  Board ->
   -- | Original
   Board ->
   -- | New
-  Int -- Number of pieces that changed
+  Board ->
+  -- | Number of pieces that changed
+  Int
 pieceDiffCount orig new = foldr go 0 [minBound ..]
   where
     go :: Square -> Int -> Int
-    go sq acc =
-      let getPieceAt' sq' = evalStateT (getPieceAt sq')
-       in if getPieceAt' sq orig == getPieceAt' sq new then acc else acc + 1
+    go sq acc = if getPieceAt' sq orig == getPieceAt' sq new then acc else acc + 1
 
--- Check that the board is in an internally consistent state
-checkInternalConsistency :: Board -> Bool
-checkInternalConsistency MkBoard {..} = checkOccupied && checkRed && checkBlack
-  where
-    checkOccupied = _occupied == (_rook `SS.union` _knight `SS.union` _elephant `SS.union` _advisor `SS.union` _king `SS.union` _pawn `SS.union` _cannon)
-    checkRed = _red == (_occupied `SS.intersection` SS.redMask)
-    checkBlack = _black == (_occupied `SS.intersection` SS.blackMask)
+assertKeepsInternalConsistency :: State Board a -> Board -> Bool
+assertKeepsInternalConsistency s board = checkInternalConsistency (execState s board)
 
 -- }}}

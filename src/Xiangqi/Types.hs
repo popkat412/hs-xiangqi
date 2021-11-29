@@ -53,6 +53,7 @@ import Data.DoubleWord (Word96 (Word96))
 import Lens.Micro
 import Lens.Micro.TH
 import Test.QuickCheck (Arbitrary (arbitrary), arbitraryBoundedEnum)
+import Xiangqi.Helpers (showBits)
 
 -- {{{ Square set
 
@@ -62,6 +63,11 @@ import Test.QuickCheck (Arbitrary (arbitrary), arbitraryBoundedEnum)
 --
 -- This is using Little-Endian Rank-File mapping (<https://www.chessprogramming.org/Square_Mapping_Considerations#Little-Endian_Rank-File_Mapping>)
 newtype SquareSet = SquareSet Word96 deriving newtype (Bits, FiniteBits)
+
+instance Show SquareSet where
+  show = showBits
+
+-- show = prettySquareSet
 
 instance Eq SquareSet where
   -- Ignore the most significant 6 bits because the board has 90 squares but it isn't a power of 2
@@ -126,7 +132,7 @@ data Board = MkBoard
     _pawn :: SquareSet,
     _cannon :: SquareSet
   }
-  deriving stock (Eq)
+  deriving stock (Eq, Show)
 
 -- Do note that the instance Arbitrary definition is in Xiangqi.Board to avoid cyclic dependencies
 
