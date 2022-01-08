@@ -49,6 +49,7 @@ library
                      , Xiangqi.SquareSet
                      , Xiangqi.MoveGeneration
                      , Xiangqi.Board
+                     , Xiangqi.Game
                      , Xiangqi.Types
   other-modules:       Xiangqi.Helpers
 

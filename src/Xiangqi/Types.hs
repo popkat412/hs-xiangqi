@@ -1,8 +1,10 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+-- i have no idea why but ghc can't find libiconv.dylib and gives a warning
+-- so im just going to disable it and hope it doens't bite me in the butt later
+{-# OPTIONS_GHC -Wno-missed-extra-shared-lib #-}
 
 -- |
 -- Module      : Xiangqi.Types
@@ -38,6 +40,7 @@ module Xiangqi.Types
 
     -- * Side
     Side (..),
+    toggleSide,
 
     -- * Piece
     Piece (..),
@@ -45,6 +48,22 @@ module Xiangqi.Types
     -- ** Lenses
     side,
     role,
+
+    -- * Move
+    Move (..),
+
+    -- ** Lenses
+    fromSq,
+    toSq,
+    capturedPiece,
+
+    -- * Game
+    Game (..),
+
+    -- ** Lenses
+    gameBoard,
+    currSide,
+    history,
   )
 where
 
@@ -166,6 +185,10 @@ instance BoardProperty Role where
 -- | The side of the piece/player.
 data Side = Red | Black deriving stock (Eq, Show, Enum, Bounded)
 
+toggleSide :: Side -> Side
+toggleSide Red = Black
+toggleSide Black = Red
+
 instance Arbitrary Side where
   arbitrary = arbitraryBoundedEnum
 
@@ -186,5 +209,31 @@ makeLenses ''Piece
 
 instance Arbitrary Piece where
   arbitrary = Piece <$> arbitrary <*> arbitrary
+
+-- }}}
+
+-- {{{ Move
+
+data Move = Move
+  { _fromSq :: Square,
+    _toSq :: Square,
+    _capturedPiece :: Maybe Piece
+  }
+  deriving stock (Show)
+
+makeLenses ''Move
+
+-- }}}
+
+-- {{{ Game
+
+data Game = Game
+  { _gameBoard :: Board,
+    _currSide :: Side,
+    _history :: [Move]
+  }
+  deriving stock (Show)
+
+makeLenses ''Game
 
 -- }}}
